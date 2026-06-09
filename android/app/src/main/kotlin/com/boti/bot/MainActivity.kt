@@ -31,7 +31,7 @@ class MainActivity : AppCompatActivity() {
 
         findViewById<Button>(R.id.btnToggleListen).setOnClickListener {
             val service = BotService.instance ?: return@setOnClickListener
-            service.setListening(!service.isListening)
+            service.applyListening(!service.isListening)
             updateUI()
         }
     }

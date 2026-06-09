@@ -25,7 +25,7 @@ class BotService : AccessibilityService() {
         CommandListener.start()
     }
 
-    fun setListening(value: Boolean) {
+    fun applyListening(value: Boolean) {
         isListening = value
         val status = if (value) "online" else "paused"
         scope.launch {
