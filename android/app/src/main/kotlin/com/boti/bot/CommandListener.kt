@@ -22,6 +22,15 @@ object CommandListener {
                         val action  = command.getString("action")
                         val payload = command.optString("payload", null)
 
+                        if (action.uppercase() == "STOP") {
+                            stopCurrent = true
+                            SupabaseClient.cancelPendingCommands(deviceId)
+                            SupabaseClient.markCommand(id, "done")
+                            SupabaseClient.addLog(deviceId, "info", "STOP: cola limpiada")
+                            delay(2000)
+                            continue
+                        }
+
                         stopCurrent = false
                         SupabaseClient.markCommand(id, "executing")
                         SupabaseClient.addLog(deviceId, "info", "Ejecutando: $action")

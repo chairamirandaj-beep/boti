@@ -80,6 +80,16 @@ object SupabaseClient {
         http.newCall(req).execute().close()
     }
 
+    fun cancelPendingCommands(deviceId: String) {
+        val body = JSONObject().apply { put("status", "cancelled") }.toString()
+        val req = Request.Builder()
+            .url("$BASE_URL/rest/v1/commands?device_id=eq.$deviceId&status=eq.pending")
+            .withAuth()
+            .patch(body.toRequestBody(JSON_TYPE))
+            .build()
+        http.newCall(req).execute().close()
+    }
+
     fun addLog(deviceId: String, level: String, message: String) {
         val body = JSONObject().apply {
             put("device_id", deviceId)
