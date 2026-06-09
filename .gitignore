@@ -1,0 +1,21 @@
+# Secrets - no subir a GitHub
+.claude/settings.local.json
+
+# Dependencies
+node_modules/
+.next/
+out/
+
+# Environment
+.env
+.env.local
+.env*.local
+
+# Build
+dist/
+build/
+
+# Android
+android/local.properties
+android/*.jks
+android/app/release/
