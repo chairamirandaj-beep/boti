@@ -82,22 +82,38 @@ object CommandExecutor {
 
         repeat(times) { i ->
             try {
-                // Intentar dar like buscando por varias descripciones posibles
+                // 1. Intentar por accessibility tree (varias descripciones posibles)
                 val liked = findAndClick("like")
                     || findAndClick("me gusta")
+                    || findAndClick("gusta")
                     || findAndClick("coraz")
+                    || tapTiktokLikeButton() // fallback por coordenadas
 
-                log(deviceId, "info", "Video ${i + 1}/$times — like: ${if (liked) "OK" else "no encontrado"}")
-                Thread.sleep(800)
+                log(deviceId, "info", "Video ${i + 1}/$times — like: ${if (liked) "OK" else "fallido"}")
+                Thread.sleep(1000)
 
                 scroll()
-                Thread.sleep(2500)
+                Thread.sleep(3000)
             } catch (e: Exception) {
                 log(deviceId, "error", "Error video ${i + 1}: ${e.message}")
             }
         }
 
         log(deviceId, "info", "Secuencia TikTok completada: $times videos")
+    }
+
+    // Toca donde TikTok siempre pone el botón de like (lado derecho, ~55% altura)
+    private fun tapTiktokLikeButton(): Boolean {
+        val service = BotService.instance ?: return false
+        val metrics = service.resources.displayMetrics
+        val x = metrics.widthPixels * 0.93f
+        val y = metrics.heightPixels * 0.55f
+
+        val path = Path().apply { moveTo(x, y) }
+        val stroke = GestureDescription.StrokeDescription(path, 0L, 50L)
+        val gesture = GestureDescription.Builder().addStroke(stroke).build()
+        service.dispatchGesture(gesture, null, null)
+        return true
     }
 
     private fun log(deviceId: String, level: String, message: String) {
