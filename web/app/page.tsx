@@ -27,6 +27,7 @@ export default function Home() {
     const { data } = await supabase
       .from('devices')
       .select('*')
+      .order('last_seen', { ascending: false })
       .limit(1)
       .single()
     if (data) setDevice(data)
