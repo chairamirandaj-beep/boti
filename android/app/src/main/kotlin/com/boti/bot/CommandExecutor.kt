@@ -1,14 +1,20 @@
 package com.boti.bot
 
 import android.accessibilityservice.GestureDescription
+import android.content.Intent
 import android.graphics.Path
+import android.view.accessibility.AccessibilityNodeInfo
 
 object CommandExecutor {
 
     fun execute(action: String, payload: String?) {
         when (action.uppercase()) {
-            "SCROLL" -> scroll()
-            "STOP"   -> CommandListener.stop()
+            "SCROLL"      -> scroll()
+            "STOP"        -> CommandListener.stop()
+            "OPEN_APP"    -> openApp(payload ?: return)
+            "FIND_CLICK"  -> findAndClick(payload ?: return)
+            "WAIT"        -> Thread.sleep(payload?.toLongOrNull() ?: 1000L)
+            "TIKTOK_LIKE" -> tiktokLikeLoop(payload?.toIntOrNull() ?: 2)
         }
     }
 
@@ -26,5 +32,75 @@ object CommandExecutor {
         val stroke  = GestureDescription.StrokeDescription(path, 0L, 400L)
         val gesture = GestureDescription.Builder().addStroke(stroke).build()
         service.dispatchGesture(gesture, null, null)
+    }
+
+    private fun openApp(packageName: String) {
+        val service = BotService.instance ?: return
+        val intent = service.packageManager.getLaunchIntentForPackage(packageName)
+            ?.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK) ?: return
+        service.startActivity(intent)
+    }
+
+    private fun findAndClick(query: String): Boolean {
+        val service = BotService.instance ?: return false
+        val root = service.rootInActiveWindow ?: return false
+        val node = findNode(root, query.lowercase()) ?: return false
+        val target = findClickableAncestor(node) ?: node
+        val clicked = target.performAction(AccessibilityNodeInfo.ACTION_CLICK)
+        root.recycle()
+        return clicked
+    }
+
+    private fun findNode(node: AccessibilityNodeInfo, query: String): AccessibilityNodeInfo? {
+        val desc = node.contentDescription?.toString()?.lowercase() ?: ""
+        val text = node.text?.toString()?.lowercase() ?: ""
+        if (desc.contains(query) || text.contains(query)) return node
+
+        for (i in 0 until node.childCount) {
+            val child = node.getChild(i) ?: continue
+            val found = findNode(child, query)
+            if (found != null) return found
+        }
+        return null
+    }
+
+    private fun findClickableAncestor(node: AccessibilityNodeInfo): AccessibilityNodeInfo? {
+        var current: AccessibilityNodeInfo? = node
+        repeat(5) {
+            if (current?.isClickable == true) return current
+            current = current?.parent
+        }
+        return null
+    }
+
+    private fun tiktokLikeLoop(times: Int) {
+        val deviceId = DeviceId.get() ?: return
+
+        openApp("com.zhiliaoapp.musically")
+        log(deviceId, "info", "Abriendo TikTok...")
+        Thread.sleep(4000)
+
+        repeat(times) { i ->
+            try {
+                // Intentar dar like buscando por varias descripciones posibles
+                val liked = findAndClick("like")
+                    || findAndClick("me gusta")
+                    || findAndClick("coraz")
+
+                log(deviceId, "info", "Video ${i + 1}/$times — like: ${if (liked) "OK" else "no encontrado"}")
+                Thread.sleep(800)
+
+                scroll()
+                Thread.sleep(2500)
+            } catch (e: Exception) {
+                log(deviceId, "error", "Error video ${i + 1}: ${e.message}")
+            }
+        }
+
+        log(deviceId, "info", "Secuencia TikTok completada: $times videos")
+    }
+
+    private fun log(deviceId: String, level: String, message: String) {
+        try { SupabaseClient.addLog(deviceId, level, message) } catch (_: Exception) {}
     }
 }

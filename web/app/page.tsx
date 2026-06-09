@@ -41,12 +41,13 @@ export default function Home() {
     if (data) setLogs(data)
   }
 
-  const sendCommand = async (action: string) => {
+  const sendCommand = async (action: string, payload?: string) => {
     if (!device) return
     setLoading(true)
     await supabase.from('commands').insert({
       device_id: device.id,
       action,
+      payload: payload ?? null,
       status: 'pending',
     })
     setLoading(false)
@@ -85,7 +86,14 @@ export default function Home() {
         )}
       </div>
 
-      <div className="flex gap-3 mb-6">
+      <div className="flex flex-wrap gap-3 mb-6">
+        <button
+          onClick={() => sendCommand('TIKTOK_LIKE', '2')}
+          disabled={loading || !device}
+          className="bg-pink-600 hover:bg-pink-500 disabled:opacity-40 px-6 py-3 rounded-lg font-semibold transition"
+        >
+          TikTok Like x2
+        </button>
         <button
           onClick={() => sendCommand('SCROLL')}
           disabled={loading || !device}
