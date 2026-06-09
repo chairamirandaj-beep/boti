@@ -1,4 +1,6 @@
 # Secrets - no subir a GitHub
+agent/.env
+agent/last_screenshot.png
 .claude/settings.local.json
 boti-debug.jks
 boti-debug.b64

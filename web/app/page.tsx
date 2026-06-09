@@ -134,24 +134,50 @@ export default function Home() {
 
       {/* Botones de comando */}
       <div className="grid grid-cols-2 gap-2 mb-4">
+
+        <p className="col-span-2 text-xs text-gray-500 mt-1">TIKTOK</p>
+        <button onClick={() => sendCommand('TIKTOK_OPEN')}
+          disabled={sending || !device}
+          className="bg-gray-700 hover:bg-gray-600 disabled:opacity-40 px-4 py-3 rounded-lg text-sm font-semibold transition">
+          Abrir TikTok
+        </button>
+        <button onClick={() => sendCommand('TIKTOK_LIKE')}
+          disabled={sending || !device}
+          className="bg-pink-700 hover:bg-pink-600 disabled:opacity-40 px-4 py-3 rounded-lg text-sm font-semibold transition">
+          Like ♥
+        </button>
+        <button onClick={() => sendCommand('TIKTOK_FOLLOW')}
+          disabled={sending || !device}
+          className="bg-purple-700 hover:bg-purple-600 disabled:opacity-40 px-4 py-3 rounded-lg text-sm font-semibold transition">
+          Follow
+        </button>
+        <button onClick={() => sendCommand('SCROLL')}
+          disabled={sending || !device}
+          className="bg-blue-700 hover:bg-blue-600 disabled:opacity-40 px-4 py-3 rounded-lg text-sm font-semibold transition">
+          Scroll ↑
+        </button>
+        <button onClick={() => sendCommand('TIKTOK_SWITCH_ACCOUNT', prompt('Nombre de la cuenta:') ?? '')}
+          disabled={sending || !device}
+          className="bg-yellow-700 hover:bg-yellow-600 disabled:opacity-40 px-4 py-3 rounded-lg text-sm font-semibold transition col-span-2">
+          Cambiar Cuenta
+        </button>
+
+        <p className="col-span-2 text-xs text-gray-500 mt-2">WHATSAPP</p>
         <button onClick={() => sendCommand('WHATSAPP_TAB', 'Novedades')}
           disabled={sending || !device}
           className="bg-green-700 hover:bg-green-600 disabled:opacity-40 px-4 py-3 rounded-lg text-sm font-semibold transition col-span-2">
           WhatsApp → Novedades
         </button>
-        <button onClick={() => sendCommand('TIKTOK_LIKE', '2')}
+
+        <p className="col-span-2 text-xs text-gray-500 mt-2">GENERAL</p>
+        <button onClick={() => sendCommand('SCREENSHOT')}
           disabled={sending || !device}
-          className="bg-pink-700 hover:bg-pink-600 disabled:opacity-40 px-4 py-3 rounded-lg text-sm font-semibold transition">
-          TikTok Like x2
-        </button>
-        <button onClick={() => sendCommand('SCROLL')}
-          disabled={sending || !device}
-          className="bg-blue-700 hover:bg-blue-600 disabled:opacity-40 px-4 py-3 rounded-lg text-sm font-semibold transition">
-          SCROLL
+          className="bg-gray-700 hover:bg-gray-600 disabled:opacity-40 px-4 py-3 rounded-lg text-sm font-semibold transition">
+          Screenshot
         </button>
         <button onClick={() => sendCommand('STOP')}
           disabled={sending || !device}
-          className="bg-red-700 hover:bg-red-600 disabled:opacity-40 px-4 py-3 rounded-lg text-sm font-semibold transition col-span-2">
+          className="bg-red-700 hover:bg-red-600 disabled:opacity-40 px-4 py-3 rounded-lg text-sm font-semibold transition">
           STOP
         </button>
       </div>
