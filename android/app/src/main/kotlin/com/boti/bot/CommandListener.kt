@@ -1,63 +1,73 @@
 package com.boti.bot
 
 import kotlinx.coroutines.*
+import kotlinx.coroutines.channels.Channel
 
 object CommandListener {
     private var job: Job? = null
     private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
+    private val trigger = Channel<Unit>(Channel.CONFLATED)
 
     @Volatile var stopCurrent = false
 
     fun start() {
+        // Conectar Realtime: cada INSERT en commands dispara el trigger inmediatamente
+        val deviceId = DeviceId.get() ?: return
+        RealtimeClient.onNewCommand = { trigger.trySend(Unit) }
+        RealtimeClient.connect(deviceId)
+
         if (job?.isActive == true) return
         job = scope.launch {
-            val deviceId = DeviceId.get() ?: return@launch
-            SupabaseClient.addLog(deviceId, "info", "Bot iniciado, escuchando comandos")
+            val id = DeviceId.get() ?: return@launch
+            SupabaseClient.addLog(id, "info", "Bot iniciado (Realtime activo)")
 
             while (isActive) {
+                // Espera trigger de Realtime O timeout de 10s (polling de respaldo)
+                withTimeoutOrNull(10_000) { trigger.receive() }
+
+                // Si está pausado, no procesar comandos
+                if (BotService.instance?.isListening != true) continue
+
                 try {
-                    val command = SupabaseClient.getPendingCommand(deviceId)
+                    val command = SupabaseClient.getPendingCommand(id)
                     if (command != null) {
-                        val id      = command.getString("id")
+                        val cmdId   = command.getString("id")
                         val action  = command.getString("action")
                         val payload = command.optString("payload", null)
 
                         if (action.uppercase() == "STOP") {
                             stopCurrent = true
-                            SupabaseClient.cancelPendingCommands(deviceId)
-                            SupabaseClient.markCommand(id, "done")
-                            SupabaseClient.addLog(deviceId, "info", "STOP: cola limpiada")
-                            delay(2000)
+                            SupabaseClient.cancelPendingCommands(id)
+                            SupabaseClient.markCommand(cmdId, "done")
+                            SupabaseClient.addLog(id, "info", "STOP: cola limpiada")
                             continue
                         }
 
                         stopCurrent = false
-                        SupabaseClient.markCommand(id, "executing")
-                        SupabaseClient.addLog(deviceId, "info", "Ejecutando: $action")
+                        SupabaseClient.markCommand(cmdId, "executing")
+                        SupabaseClient.addLog(id, "info", "Ejecutando: $action")
 
                         CommandExecutor.execute(action, payload)
 
-                        SupabaseClient.markCommand(id, "done")
-                        SupabaseClient.addLog(deviceId, "info", "Completado: $action")
+                        SupabaseClient.markCommand(cmdId, "done")
+                        SupabaseClient.addLog(id, "info", "Completado: $action")
                     }
                 } catch (e: Exception) {
                     runCatching {
-                        SupabaseClient.addLog(deviceId, "error", "Error: ${e.message}")
+                        SupabaseClient.addLog(id, "error", "Error: ${e.message}")
                     }
                 }
-                delay(2000)
             }
         }
     }
 
-    // Interrumpe la acción actual pero sigue escuchando nuevos comandos
     fun cancelCurrent() {
         stopCurrent = true
     }
 
-    // Solo llamar al destruir el servicio
     fun stop() {
         job?.cancel()
         job = null
+        RealtimeClient.disconnect()
     }
 }

@@ -10,6 +10,8 @@ class BotService : AccessibilityService() {
         var instance: BotService? = null
     }
 
+    @Volatile var isListening = true
+
     private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
 
     override fun onServiceConnected() {
@@ -21,6 +23,19 @@ class BotService : AccessibilityService() {
         }
 
         CommandListener.start()
+    }
+
+    fun setListening(value: Boolean) {
+        isListening = value
+        val status = if (value) "online" else "paused"
+        scope.launch {
+            runCatching {
+                val id = DeviceId.get() ?: return@runCatching
+                if (!value) SupabaseClient.cancelPendingCommands(id)
+                SupabaseClient.updateDeviceStatus(id, status)
+                SupabaseClient.addLog(id, "info", if (value) "Bot activado" else "Bot pausado")
+            }
+        }
     }
 
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {}

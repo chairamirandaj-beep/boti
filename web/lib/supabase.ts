@@ -5,7 +5,7 @@ const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
 
 export const supabase = createClient(supabaseUrl, supabaseAnonKey)
 
-export type DeviceStatus = 'online' | 'offline' | 'busy' | 'error'
+export type DeviceStatus = 'online' | 'offline' | 'busy' | 'error' | 'paused'
 
 export interface Device {
   id: string
