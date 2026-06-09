@@ -1,0 +1,4 @@
+<resources>
+    <string name="app_name">Boti Bot</string>
+    <string name="accessibility_description">Controla el teléfono remotamente desde el panel web</string>
+</resources>
