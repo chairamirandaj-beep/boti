@@ -21,7 +21,7 @@ export interface Command {
   device_id: string
   action: string
   payload: string | null
-  status: 'pending' | 'executing' | 'done' | 'error'
+  status: 'pending' | 'executing' | 'done' | 'error' | 'cancelled'
   created_at: string
   executed_at: string | null
 }

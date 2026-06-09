@@ -9,12 +9,13 @@ object CommandExecutor {
 
     fun execute(action: String, payload: String?) {
         when (action.uppercase()) {
-            "SCROLL"      -> scroll()
-            "STOP"        -> CommandListener.stop()
-            "OPEN_APP"    -> openApp(payload ?: return)
-            "FIND_CLICK"  -> findAndClick(payload ?: return)
-            "WAIT"        -> Thread.sleep(payload?.toLongOrNull() ?: 1000L)
-            "TIKTOK_LIKE" -> tiktokLikeLoop(payload?.toIntOrNull() ?: 2)
+            "SCROLL"        -> scroll()
+            "STOP"          -> CommandListener.stop()
+            "OPEN_APP"      -> openApp(payload ?: return)
+            "FIND_CLICK"    -> findAndClick(payload ?: return)
+            "WAIT"          -> Thread.sleep(payload?.toLongOrNull() ?: 1000L)
+            "TIKTOK_LIKE"   -> tiktokLikeLoop(payload?.toIntOrNull() ?: 2)
+            "WHATSAPP_TAB"  -> whatsappTab(payload ?: "Novedades")
         }
     }
 
@@ -114,6 +115,23 @@ object CommandExecutor {
         val gesture = GestureDescription.Builder().addStroke(stroke).build()
         service.dispatchGesture(gesture, null, null)
         return true
+    }
+
+    private fun whatsappTab(tabName: String) {
+        val deviceId = DeviceId.get() ?: return
+
+        log(deviceId, "info", "Paso 1: Abriendo WhatsApp...")
+        openApp("com.whatsapp")
+        Thread.sleep(3000)
+
+        log(deviceId, "info", "Paso 2: Buscando pestaña '$tabName'...")
+        val found = findAndClick(tabName)
+
+        if (found) {
+            log(deviceId, "info", "Paso 3: '$tabName' encontrado y clickeado ✓")
+        } else {
+            log(deviceId, "warn", "Paso 3: '$tabName' no encontrado en pantalla ✗")
+        }
     }
 
     private fun log(deviceId: String, level: String, message: String) {
