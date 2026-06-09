@@ -10,7 +10,7 @@ object CommandExecutor {
     fun execute(action: String, payload: String?) {
         when (action.uppercase()) {
             "SCROLL"        -> scroll()
-            "STOP"          -> CommandListener.stop()
+            "STOP"          -> CommandListener.cancelCurrent()
             "OPEN_APP"      -> openApp(payload ?: return)
             "FIND_CLICK"    -> findAndClick(payload ?: return)
             "WAIT"          -> Thread.sleep(payload?.toLongOrNull() ?: 1000L)
@@ -82,13 +82,16 @@ object CommandExecutor {
         Thread.sleep(4000)
 
         repeat(times) { i ->
+            if (CommandListener.stopCurrent) {
+                log(deviceId, "info", "Secuencia detenida por STOP")
+                return
+            }
             try {
-                // 1. Intentar por accessibility tree (varias descripciones posibles)
                 val liked = findAndClick("like")
                     || findAndClick("me gusta")
                     || findAndClick("gusta")
                     || findAndClick("coraz")
-                    || tapTiktokLikeButton() // fallback por coordenadas
+                    || tapTiktokLikeButton()
 
                 log(deviceId, "info", "Video ${i + 1}/$times — like: ${if (liked) "OK" else "fallido"}")
                 Thread.sleep(1000)

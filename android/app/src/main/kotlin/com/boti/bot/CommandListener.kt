@@ -6,6 +6,8 @@ object CommandListener {
     private var job: Job? = null
     private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
 
+    @Volatile var stopCurrent = false
+
     fun start() {
         if (job?.isActive == true) return
         job = scope.launch {
@@ -20,6 +22,7 @@ object CommandListener {
                         val action  = command.getString("action")
                         val payload = command.optString("payload", null)
 
+                        stopCurrent = false
                         SupabaseClient.markCommand(id, "executing")
                         SupabaseClient.addLog(deviceId, "info", "Ejecutando: $action")
 
@@ -38,6 +41,12 @@ object CommandListener {
         }
     }
 
+    // Interrumpe la acción actual pero sigue escuchando nuevos comandos
+    fun cancelCurrent() {
+        stopCurrent = true
+    }
+
+    // Solo llamar al destruir el servicio
     fun stop() {
         job?.cancel()
         job = null
