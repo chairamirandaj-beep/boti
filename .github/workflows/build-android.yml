@@ -31,13 +31,21 @@ jobs:
         working-directory: android
         run: echo "sdk.dir=$ANDROID_HOME" > local.properties
 
-      - name: Build Debug APK
+      - name: Decode keystore
+        run: echo "${{ secrets.KEYSTORE_BASE64 }}" | base64 -d > android/app/boti.jks
+
+      - name: Build Release APK
         working-directory: android
-        run: gradle assembleDebug
+        env:
+          KEYSTORE_PATH: boti.jks
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+        run: gradle assembleRelease
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: boti-debug
-          path: android/app/build/outputs/apk/debug/app-debug.apk
+          name: boti-release
+          path: android/app/build/outputs/apk/release/app-release.apk
           retention-days: 14

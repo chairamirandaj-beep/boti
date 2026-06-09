@@ -1,5 +1,8 @@
 # Secrets - no subir a GitHub
 .claude/settings.local.json
+boti-debug.jks
+boti-debug.b64
+android/app/boti.jks
 
 # Dependencies
 node_modules/
