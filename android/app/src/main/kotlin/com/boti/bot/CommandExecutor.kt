@@ -224,19 +224,19 @@ object CommandExecutor {
 
         fun step(n: Int, msg: String) = log(deviceId, "info", "[$n/6] $msg")
 
-        // 1. Ir al tab Perfil (último ícono barra inferior)
-        step(1, "Ir a Perfil...")
-        if (!findAndClick("perfil")) tapAt(m.widthPixels * 0.90f, m.heightPixels * 0.965f)
+        // 1. Ir al tab Perfil — último ícono de la barra de navegación inferior
+        // No usamos findAndClick("perfil") porque encuentra el perfil del creador del video.
+        // El tab está siempre en x=90%, y=97% de la pantalla.
+        step(1, "Ir a Perfil (barra inferior)...")
+        tapAt(m.widthPixels * 0.90f, m.heightPixels * 0.968f)
         delay(2000)
 
         // 2. Tocar las 3 barras horizontales (arriba a la derecha del perfil)
+        // En la pantalla de perfil personal el ícono está en la esquina superior derecha
         step(2, "Abrir menú (3 barras)...")
-        val menuFound = findAndClick("más opciones")
-            || findAndClick("more options")
-            || findAndClick("menú")
+        val menuFound = findAndClick("más opciones") || findAndClick("more options")
         if (!menuFound) {
-            // Coordenadas: esquina superior derecha, debajo de la barra de estado
-            tapAt(m.widthPixels * 0.96f, m.heightPixels * 0.07f)
+            tapAt(m.widthPixels * 0.96f, m.heightPixels * 0.055f)
         }
         delay(1500)
 
