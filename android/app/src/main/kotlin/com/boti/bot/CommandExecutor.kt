@@ -341,10 +341,10 @@ object CommandExecutor {
         }
 
         // Método 2: coordenadas — Publicar está a la derecha de la barra de texto
-        // Con el teclado activo la barra sube a ~58% de la pantalla (encima del teclado)
-        // TikTok keyboard height ≈ 40% → barra a ~60% desde arriba
-        log(deviceId, "info", "Comentar: tap Publicar por coordenadas (58%)...")
-        tapAt(m.widthPixels * 0.95f, m.heightPixels * 0.58f)
+        // Debug confirmó: teclado y=1464-2227, barra de texto y=1464-1567, centro y≈1515 = 64.7%
+        // Publicar está a x≈80% (entre el texto y el botón Cerrar que está a x=95%)
+        log(deviceId, "info", "Comentar: tap Publicar por coordenadas (80%,65%)...")
+        tapAt(m.widthPixels * 0.80f, m.heightPixels * 0.65f)
         delay(600)
         log(deviceId, "info", "Comentario enviado: \"$text\"")
     }
