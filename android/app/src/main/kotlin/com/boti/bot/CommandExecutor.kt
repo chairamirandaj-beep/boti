@@ -5,6 +5,7 @@ import android.content.Intent
 import android.graphics.Path
 import android.graphics.Rect
 import android.os.Bundle
+import android.view.accessibility.AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE
 import android.view.accessibility.AccessibilityNodeInfo
 import kotlinx.coroutines.delay
 
@@ -19,6 +20,7 @@ object CommandExecutor {
             "TIKTOK_OPEN"           -> tiktokOpen()
             "TIKTOK_LIKE"           -> tiktokLike()
             "TIKTOK_SAVE"           -> tiktokSave()
+            "TIKTOK_COMMENT"        -> tiktokComment(payload ?: return)
             "TIKTOK_FOLLOW"         -> tiktokFollow()
             "TIKTOK_SWITCH_ACCOUNT" -> tiktokSwitchAccount(payload ?: return)
             "WHATSAPP_TAB"          -> whatsappTab(payload ?: "Novedades")
@@ -256,6 +258,85 @@ object CommandExecutor {
         } else {
             log(deviceId, "warn", "Botón seguir no encontrado en pantalla")
         }
+    }
+
+    private suspend fun tiktokComment(text: String) {
+        val deviceId = DeviceId.get() ?: return
+        val service  = BotService.instance ?: return
+        val screenH  = service.resources.displayMetrics.heightPixels
+
+        // 1. Abrir panel de comentarios
+        log(deviceId, "info", "Comentar: abriendo comentarios...")
+        val root1 = service.rootInActiveWindow ?: return
+        val commentBtn = findNodeOnScreen(root1, "agregar comentarios", screenH)
+        root1.recycle()
+
+        if (commentBtn != null) {
+            commentBtn.performAction(AccessibilityNodeInfo.ACTION_CLICK)
+            commentBtn.recycle()
+        } else {
+            log(deviceId, "warn", "Comentar: botón no encontrado en pantalla")
+            return
+        }
+        delay(2000)
+
+        // 2. Encontrar el campo de texto y escribir
+        log(deviceId, "info", "Comentar: escribiendo texto...")
+        val root2 = service.rootInActiveWindow ?: return
+        val inputNode = findNode(root2, "agregar un comentario")
+            ?: findNode(root2, "comentario")
+            ?: findEditText(root2)
+        root2.recycle()
+
+        if (inputNode == null) {
+            log(deviceId, "warn", "Comentar: campo de texto no encontrado")
+            return
+        }
+
+        inputNode.performAction(AccessibilityNodeInfo.ACTION_FOCUS)
+        delay(300)
+        val bundle = Bundle().apply {
+            putCharSequence(ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, text)
+        }
+        val typed = inputNode.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, bundle)
+        inputNode.recycle()
+
+        if (!typed) {
+            log(deviceId, "warn", "Comentar: no pudo escribir el texto")
+            return
+        }
+        delay(800)
+
+        // 3. Tocar el botón Publicar/Enviar
+        log(deviceId, "info", "Comentar: publicando...")
+        val root3 = service.rootInActiveWindow ?: return
+        val sent = findNode(root3, "publicar")
+            ?.let { n -> n.performAction(AccessibilityNodeInfo.ACTION_CLICK).also { n.recycle() } }
+            ?: findNode(root3, "enviar")
+            ?.let { n -> n.performAction(AccessibilityNodeInfo.ACTION_CLICK).also { n.recycle() } }
+            ?: false
+        root3.recycle()
+
+        if (sent) {
+            log(deviceId, "info", "Comentario publicado ✓: \"$text\"")
+        } else {
+            log(deviceId, "warn", "Comentar: botón Publicar no encontrado")
+        }
+    }
+
+    // Busca el primer EditText en el árbol (campo de texto genérico)
+    private fun findEditText(node: AccessibilityNodeInfo): AccessibilityNodeInfo? {
+        if (node.className?.contains("EditText") == true) return node
+        for (i in 0 until node.childCount) {
+            val child = node.getChild(i) ?: continue
+            val found = findEditText(child)
+            if (found != null) {
+                if (found !== child) child.recycle()
+                return found
+            }
+            child.recycle()
+        }
+        return null
     }
 
     private suspend fun tiktokSwitchAccount(accountName: String) {

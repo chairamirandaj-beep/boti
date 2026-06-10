@@ -151,6 +151,11 @@ export default function Home() {
           className="bg-purple-700 hover:bg-purple-600 disabled:opacity-40 px-4 py-3 rounded-lg text-sm font-semibold transition">
           Seguir
         </button>
+        <button onClick={() => { const t = prompt('Texto del comentario:'); if (t?.trim()) sendCommand('TIKTOK_COMMENT', t.trim()) }}
+          disabled={sending || !device}
+          className="bg-cyan-700 hover:bg-cyan-600 disabled:opacity-40 px-4 py-3 rounded-lg text-sm font-semibold transition">
+          Comentar 💬
+        </button>
         <button onClick={() => sendCommand('TIKTOK_SAVE')}
           disabled={sending || !device}
           className="bg-indigo-700 hover:bg-indigo-600 disabled:opacity-40 px-4 py-3 rounded-lg text-sm font-semibold transition">
