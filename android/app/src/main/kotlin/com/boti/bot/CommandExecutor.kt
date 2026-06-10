@@ -84,24 +84,23 @@ object CommandExecutor {
             return
         }
 
-        // Intento 2: intent genérico por package (algunos TikTok tienen actividad diferente)
-        val fallback = pm.getLeanbackLaunchIntentForPackage(packageName)
-        if (fallback != null) {
-            fallback.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-            service.startActivity(fallback)
-            return
-        }
-
-        // Intento 3: abrir desde Play Store / lista de apps
+        // Intento 2: ACTION_MAIN con CATEGORY_LAUNCHER directo
         try {
-            val market = Intent(Intent.ACTION_VIEW).apply {
-                data = android.net.Uri.parse("package:$packageName")
-                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            val main = Intent(Intent.ACTION_MAIN).apply {
+                addCategory(Intent.CATEGORY_LAUNCHER)
+                setPackage(packageName)
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED)
             }
-            service.startActivity(market)
-        } catch (_: Exception) {
-            log(deviceId, "error", "openApp: no se pudo abrir '$packageName' — ¿está instalado?")
-        }
+            val activities = pm.queryIntentActivities(main, 0)
+            if (activities.isNotEmpty()) {
+                main.component = android.content.ComponentName(
+                    packageName, activities[0].activityInfo.name)
+                service.startActivity(main)
+                return
+            }
+        } catch (_: Exception) {}
+
+        log(deviceId, "error", "openApp: no se pudo abrir '$packageName' — ¿está instalado?")
     }
 
     private fun findNode(node: AccessibilityNodeInfo, query: String): AccessibilityNodeInfo? {
