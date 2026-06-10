@@ -56,6 +56,7 @@ export default function Home() {
   const [logs, setLogs]       = useState<Log[]>([])
   const [lastCmd, setLastCmd] = useState<Command | null>(null)
   const [sending, setSending] = useState(false)
+  const [liveLink, setLiveLink] = useState('')
 
   useEffect(() => {
     fetchDevice()
@@ -202,6 +203,19 @@ export default function Home() {
 
       {/* ── TikTok Live ── */}
       <p className="text-xs text-gray-500 mb-2 tracking-widest">TIKTOK LIVE</p>
+      <div className="flex gap-2 mb-2">
+        <input
+          type="text"
+          value={liveLink}
+          onChange={(e) => setLiveLink(e.target.value)}
+          placeholder="Link del live (https://www.tiktok.com/@user/live)"
+          className="flex-1 bg-gray-900 border border-gray-800 rounded-xl px-3 py-2 text-xs text-gray-200 placeholder-gray-600 focus:outline-none focus:border-gray-600"
+        />
+        <Btn onClick={() => { if (liveLink.trim()) sendCommand('TIKTOK_OPEN_LIVE', liveLink.trim()) }}
+          disabled={off || !liveLink.trim()} color="bg-emerald-700 hover:bg-emerald-600">
+          Abrir Live 📺
+        </Btn>
+      </div>
       <div className="grid grid-cols-2 gap-2 mb-4">
         <Btn onClick={() => { const t = ask('Comentario para el live:'); if (t) sendCommand('TIKTOK_LIVE_COMMENT', t) }}
           disabled={off} color="bg-rose-700 hover:bg-rose-600">

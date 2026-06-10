@@ -5,6 +5,7 @@ import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
+import android.net.Uri
 import android.graphics.Path
 import android.graphics.Rect
 import android.os.Bundle
@@ -21,6 +22,7 @@ object CommandExecutor {
             "FIND_CLICK"            -> findAndClick(payload ?: return)
             "WAIT"                  -> delay(payload?.toLongOrNull() ?: 1000L)
             "TIKTOK_OPEN"           -> tiktokOpen()
+            "TIKTOK_OPEN_LIVE"      -> tiktokOpenLive(payload ?: return)
             "TIKTOK_LIKE"           -> tiktokLike()
             "TIKTOK_SAVE"           -> tiktokSave()
             "TIKTOK_COMMENT"        -> tiktokComment(payload ?: return)
@@ -410,6 +412,53 @@ object CommandExecutor {
         openApp("com.zhiliaoapp.musically")
         delay(3000)
         log(deviceId, "info", "TikTok abierto")
+    }
+
+    // Abre un link de TikTok (p.ej. un live) forzando que lo maneje la app de TikTok.
+    private suspend fun tiktokOpenLive(url: String) {
+        val deviceId = DeviceId.get() ?: return
+        val service  = BotService.instance ?: return
+        val link = url.trim()
+        if (link.isEmpty()) { log(deviceId, "warn", "Abrir live: link vacío"); return }
+
+        log(deviceId, "info", "Abriendo live: $link")
+        val uri = Uri.parse(link)
+
+        // Intento 1: forzar la app de TikTok (global)
+        try {
+            val intent = Intent(Intent.ACTION_VIEW, uri).apply {
+                setPackage("com.zhiliaoapp.musically")
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
+            service.startActivity(intent)
+            delay(5000)
+            log(deviceId, "info", "Live abierto ✓")
+            return
+        } catch (_: Exception) {}
+
+        // Intento 2: variante regional del paquete
+        try {
+            val intent = Intent(Intent.ACTION_VIEW, uri).apply {
+                setPackage("com.ss.android.ugc.trill")
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
+            service.startActivity(intent)
+            delay(5000)
+            log(deviceId, "info", "Live abierto ✓ (trill)")
+            return
+        } catch (_: Exception) {}
+
+        // Intento 3: sin forzar paquete (deja que Android resuelva)
+        try {
+            val intent = Intent(Intent.ACTION_VIEW, uri).apply {
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
+            service.startActivity(intent)
+            delay(5000)
+            log(deviceId, "info", "Live abierto ✓ (sin forzar app)")
+        } catch (e: Exception) {
+            log(deviceId, "error", "Abrir live: no se pudo abrir el link — ${e.message}")
+        }
     }
 
     private suspend fun tiktokLike() {
