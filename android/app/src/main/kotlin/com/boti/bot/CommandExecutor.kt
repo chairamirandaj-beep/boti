@@ -327,21 +327,26 @@ object CommandExecutor {
         }
         delay(800)
 
-        // 3. Tocar el botón Publicar/Enviar
+        // 3. Publicar — varios métodos en orden de confiabilidad
         log(deviceId, "info", "Comentar: publicando...")
-        val root3 = service.rootInActiveWindow ?: return
-        val sent = findNode(root3, "publicar")
-            ?.let { n -> n.performAction(AccessibilityNodeInfo.ACTION_CLICK).also { n.recycle() } }
-            ?: findNode(root3, "enviar")
-            ?.let { n -> n.performAction(AccessibilityNodeInfo.ACTION_CLICK).also { n.recycle() } }
-            ?: false
-        root3.recycle()
 
-        if (sent) {
+        // Método 1: buscar botón en TODAS las ventanas (incluye overlays de TikTok)
+        val posted = findAndClickInAllWindows("publicar")
+            || findAndClickInAllWindows("enviar")
+            || findAndClickInAllWindows("post")
+
+        if (posted) {
             log(deviceId, "info", "Comentario publicado ✓: \"$text\"")
-        } else {
-            log(deviceId, "warn", "Comentar: botón Publicar no encontrado")
+            return
         }
+
+        // Método 2: coordenadas — Publicar está a la derecha de la barra de texto
+        // Con el teclado activo la barra sube a ~58% de la pantalla (encima del teclado)
+        // TikTok keyboard height ≈ 40% → barra a ~60% desde arriba
+        log(deviceId, "info", "Comentar: tap Publicar por coordenadas (58%)...")
+        tapAt(m.widthPixels * 0.95f, m.heightPixels * 0.58f)
+        delay(600)
+        log(deviceId, "info", "Comentario enviado: \"$text\"")
     }
 
     // Busca el primer EditText en el árbol (campo de texto genérico)
