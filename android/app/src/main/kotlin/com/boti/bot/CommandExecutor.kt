@@ -328,49 +328,49 @@ object CommandExecutor {
         delay(2000) // esperar que desaparezca la popup "Pegar texto copiado"
 
         // 3. Publicar
-        log(deviceId, "info", "Comentar: publicando...")
+        // Esperar 4s para que desaparezca la popup "Pegar texto copiado" que bloquea el área
+        log(deviceId, "info", "Comentar: esperando que desaparezca popup de pegado...")
+        delay(3500)
 
-        // Obtener posición del teclado y de la barra
+        // Obtener posición dinámica del teclado (ventana tipo=2)
         val keyboardTopY = run {
             val rect = Rect()
             service.windows?.find { it.type == 2 }?.getBoundsInScreen(rect)
             if (rect.top > 0) rect.top else (m.heightPixels * 0.62f).toInt()
         }
         val barCenterY = keyboardTopY + (m.heightPixels * 0.022f).toInt()
+        log(deviceId, "info", "Comentar: publicando... (teclado top=$keyboardTopY)")
 
-        // En TikTok el botón "Publicar" cambia visualmente cuando hay texto
-        // pero la etiqueta de accesibilidad sigue siendo "Cerrar" — clickeamos ese nodo
-        // y verificamos si el teclado se cerró (= comentario enviado)
-        val cerrarNode = findInAllWindowsByDesc("cerrar")
-        if (cerrarNode != null) {
+        // Buscar "Publicar" en el árbol (podría aparecer después de que la popup se cierra)
+        val pubNode = findInAllWindowsByDesc("publicar")
+            ?: findInAllWindowsByDesc("enviar")
+        if (pubNode != null) {
             val rect = Rect()
-            cerrarNode.getBoundsInScreen(rect)
-            log(deviceId, "info", "Publicar: click nodo 'Cerrar' en ${rect.toShortString()}")
-            val clicked = cerrarNode.performAction(AccessibilityNodeInfo.ACTION_CLICK)
-            if (!clicked) tapAt(rect.centerX().toFloat(), rect.centerY().toFloat())
-            cerrarNode.recycle()
+            pubNode.getBoundsInScreen(rect)
+            log(deviceId, "info", "Publicar: nodo '${pubNode.contentDescription}' en ${rect.toShortString()}")
+            val ok = pubNode.performAction(AccessibilityNodeInfo.ACTION_CLICK)
+            if (!ok) tapAt(rect.centerX().toFloat(), rect.centerY().toFloat())
+            pubNode.recycle()
+            log(deviceId, "info", "Comentario publicado ✓: \"$text\"")
+            return
+        }
+
+        // Sin nodo — tap directo sobre la barra: entre texto (x≈529) y Cerrar (x=950)
+        // Probamos tres posiciones x en orden
+        val barY = barCenterY.toFloat()
+        val xPositions = listOf(0.80f, 0.75f, 0.70f)
+        for (xPct in xPositions) {
+            val tapX = m.widthPixels * xPct
+            log(deviceId, "info", "Publicar: tap x=${tapX.toInt()} y=${barY.toInt()} (${(xPct*100).toInt()}%)")
+            tapAt(tapX, barY)
             delay(1000)
             val kbGone = service.windows?.none { it.type == 2 } ?: true
             if (kbGone) {
                 log(deviceId, "info", "Comentario publicado ✓: \"$text\"")
                 return
             }
-            log(deviceId, "warn", "Publicar: Cerrar cerró el teclado sin publicar — intentando coords...")
         }
-
-        // Fallback de coordenadas: Publicar está entre el texto y el botón Cerrar
-        // Debug: texto en x≈529, Cerrar en x=950 → Publicar centro en x≈740
-        val tapX = m.widthPixels * 0.70f
-        val tapY = barCenterY.toFloat()
-        log(deviceId, "info", "Publicar: tap coords x=${tapX.toInt()} y=${tapY.toInt()}")
-        tapAt(tapX, tapY)
-        delay(800)
-        val kbGone2 = service.windows?.none { it.type == 2 } ?: true
-        if (kbGone2) {
-            log(deviceId, "info", "Comentario publicado ✓ (coords): \"$text\"")
-        } else {
-            log(deviceId, "warn", "Publicar: teclado sigue abierto — coords incorrectas")
-        }
+        log(deviceId, "warn", "Publicar: teclado sigue abierto tras 3 intentos")
     }
 
     private fun findInAllWindowsByDesc(desc: String): AccessibilityNodeInfo? {
