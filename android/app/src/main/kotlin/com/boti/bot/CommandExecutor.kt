@@ -564,28 +564,24 @@ object CommandExecutor {
     private suspend fun tiktokLiveComment(text: String) {
         val deviceId = DeviceId.get() ?: return
         val service  = BotService.instance ?: return
-        val m        = service.resources.displayMetrics
 
-        // 1. Buscar input del chat — Live usa "deja un comentario" o similar
+        // 1. Buscar input del chat — solo por placeholder exacto o EditText
         log(deviceId, "info", "Live comentar: buscando input...")
         var inputNode: AccessibilityNodeInfo? = service.rootInActiveWindow?.let { root ->
             val n = findNode(root, "deja un comentario")
-                ?: findNode(root, "comentario")
                 ?: findNode(root, "añadir comentario")
                 ?: findEditText(root)
             root.recycle()
             n
         }
-        // Si no encontrado, tocar la barra de chat (abajo izquierda del live)
+        // Si no encontrado, tocar la barra del chat
+        // DEBUG_ALL confirmó: barra en [28,2174][640,2296], centro x=200, y=2235
         if (inputNode == null) {
-            log(deviceId, "info", "Live comentar: tocando barra de chat...")
-            tapAt(m.widthPixels * 0.25f, m.heightPixels * 0.92f)
+            log(deviceId, "info", "Live comentar: tocando barra de chat (y=2235)...")
+            tapAt(200f, 2235f)
             delay(1800)
             inputNode = service.rootInActiveWindow?.let { root ->
-                val n = findEditText(root)
-                    ?: findNode(root, "comentario")
-                root.recycle()
-                n
+                val n = findEditText(root); root.recycle(); n
             }
         }
         if (inputNode == null) {
@@ -607,20 +603,23 @@ object CommandExecutor {
             if (!typed) { inputNode.recycle(); log(deviceId, "warn", "Live comentar: no pudo escribir"); return }
         }
         inputNode.recycle()
-        delay(1000)
+        delay(1200)
 
-        // 3. Enviar — buscar botón send o usar coordenadas
+        // 3. Enviar
         log(deviceId, "info", "Live comentar: enviando...")
         val keyboardOpen = service.windows?.any { it.type == 2 } ?: false
-        val sent = findAndClickInAllWindows("enviar")
-            || findAndClickInAllWindows("send")
-            || findAndClickInAllWindows("publicar")
+        val sent = findAndClickInAllWindows("enviar") || findAndClickInAllWindows("send")
         if (!sent) {
-            // Botón enviar suele estar a la derecha del input, encima del teclado
-            if (keyboardOpen) tapAt(971f, 1505f) else tapAt(971f, 2237f)
+            if (keyboardOpen) {
+                // Con teclado: send arriba del teclado (mismo que comentarios normales)
+                tapAt(1000f, 1505f)
+            } else {
+                // Sin teclado: ImageView send dentro de la barra [556,2193][640,2277]
+                tapAt(598f, 2235f)
+            }
         }
         delay(600)
-        service.performGlobalAction(android.accessibilityservice.AccessibilityService.GLOBAL_ACTION_BACK)
+        // No salir del live — el usuario sigue viendo el stream
         log(deviceId, "info", "Live comentado ✓: \"$text\"")
     }
 
