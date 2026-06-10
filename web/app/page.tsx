@@ -161,10 +161,10 @@ export default function Home() {
           className="bg-blue-700 hover:bg-blue-600 disabled:opacity-40 px-4 py-3 rounded-lg text-sm font-semibold transition col-span-2">
           Scroll ↑
         </button>
-        <button onClick={() => sendCommand('TIKTOK_SWITCH_ACCOUNT', prompt('Nombre de la cuenta:') ?? '')}
+        <button onClick={() => { const c = prompt('Nombre exacto de la cuenta (ej: jc_miranda_):'); if (c?.trim()) sendCommand('TIKTOK_SWITCH_ACCOUNT', c.trim()) }}
           disabled={sending || !device}
           className="bg-yellow-700 hover:bg-yellow-600 disabled:opacity-40 px-4 py-3 rounded-lg text-sm font-semibold transition col-span-2">
-          Cambiar Cuenta
+          Cambiar Cuenta 👤
         </button>
 
         <p className="col-span-2 text-xs text-gray-500 mt-2">WHATSAPP</p>
