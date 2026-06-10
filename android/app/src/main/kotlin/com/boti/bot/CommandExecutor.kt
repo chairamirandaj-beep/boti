@@ -274,25 +274,17 @@ object CommandExecutor {
         val root1 = service.rootInActiveWindow ?: return
         val commentBtn = findNodeOnScreen(root1, "agregar comentarios", screenH)
         root1.recycle()
-
         if (commentBtn != null) {
             commentBtn.performAction(AccessibilityNodeInfo.ACTION_CLICK)
             commentBtn.recycle()
         } else {
-            log(deviceId, "warn", "Comentar: botón no encontrado en pantalla")
+            log(deviceId, "warn", "Comentar: botón comentarios no encontrado")
             return
         }
         delay(2000)
 
-        // 2. Activar el campo de texto tocando la barra inferior (siempre por coordenadas)
-        // El campo de texto NO está en el árbol hasta que se toca y el teclado aparece
-        log(deviceId, "info", "Comentar: activando campo de texto...")
-        // Barra de nuevo comentario está al fondo del panel (y≈95%), sobre la nav bar (y=2227)
-        // y=91% (2129) caía en el botón "Responder" del último comentario visible
-        tapAt(m.widthPixels * 0.40f, m.heightPixels * 0.95f)
-        delay(1800) // esperar que aparezca el teclado
-
-        // Buscar el EditText ahora que el teclado está activo
+        // 2. Buscar campo de texto (sin activar teclado primero)
+        log(deviceId, "info", "Comentar: buscando campo de texto...")
         var inputNode: AccessibilityNodeInfo? = service.rootInActiveWindow?.let { root ->
             val n = findNode(root, "agregar un comentario")
                 ?: findNode(root, "añadir un comentario")
@@ -300,39 +292,46 @@ object CommandExecutor {
             root.recycle()
             n
         }
-
+        // Si no encontrado, activar tocando la barra al fondo
         if (inputNode == null) {
-            log(deviceId, "warn", "Comentar: campo de texto no encontrado tras activar teclado")
+            log(deviceId, "info", "Comentar: tocando barra de comentario...")
+            tapAt(m.widthPixels * 0.40f, m.heightPixels * 0.95f)
+            delay(1800)
+            inputNode = service.rootInActiveWindow?.let { root ->
+                val n = findEditText(root); root.recycle(); n
+            }
+        }
+        if (inputNode == null) {
+            log(deviceId, "warn", "Comentar: campo de texto no encontrado")
             return
         }
 
-        log(deviceId, "info", "Comentar: escribiendo texto via portapapeles...")
+        // 3. Pegar texto
+        log(deviceId, "info", "Comentar: pegando texto...")
         inputNode.performAction(AccessibilityNodeInfo.ACTION_FOCUS)
         delay(200)
-
-        // Método preferido: portapapeles (más compatible con campos customizados de TikTok)
         val clipboard = service.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
         clipboard.setPrimaryClip(ClipData.newPlainText("boti_comment", text))
         delay(200)
         val pasted = inputNode.performAction(AccessibilityNodeInfo.ACTION_PASTE)
-
-        // Fallback: ACTION_SET_TEXT
         if (!pasted) {
             val bundle = Bundle().apply { putCharSequence(ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, text) }
             val typed = inputNode.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, bundle)
-            if (!typed) {
-                inputNode.recycle()
-                log(deviceId, "warn", "Comentar: no pudo escribir el texto")
-                return
-            }
+            if (!typed) { inputNode.recycle(); log(deviceId, "warn", "Comentar: no pudo escribir"); return }
         }
         inputNode.recycle()
-        delay(2000) // esperar que desaparezca la popup "Pegar texto copiado"
-
         delay(1200)
+
+        // 4. Publicar — posición según si el teclado está abierto o no
         log(deviceId, "info", "Comentar: publicando...")
-        // Botón Publicar en x=1000, y=1505 (coordenadas confirmadas)
-        tapAt(1000f, 1505f)
+        val keyboardOpen = service.windows?.any { it.type == 2 } ?: false
+        if (keyboardOpen) {
+            log(deviceId, "info", "Publicar con teclado: x=1000 y=1505")
+            tapAt(1000f, 1505f)
+        } else {
+            log(deviceId, "info", "Publicar sin teclado: x=971 y=2237")
+            tapAt(971f, 2237f)
+        }
         delay(800)
         log(deviceId, "info", "Comentario publicado ✓: \"$text\"")
     }
