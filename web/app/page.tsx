@@ -149,11 +149,16 @@ export default function Home() {
         <button onClick={() => sendCommand('TIKTOK_FOLLOW')}
           disabled={sending || !device}
           className="bg-purple-700 hover:bg-purple-600 disabled:opacity-40 px-4 py-3 rounded-lg text-sm font-semibold transition">
-          Follow
+          Seguir
+        </button>
+        <button onClick={() => sendCommand('TIKTOK_SAVE')}
+          disabled={sending || !device}
+          className="bg-indigo-700 hover:bg-indigo-600 disabled:opacity-40 px-4 py-3 rounded-lg text-sm font-semibold transition">
+          Guardar 🔖
         </button>
         <button onClick={() => sendCommand('SCROLL')}
           disabled={sending || !device}
-          className="bg-blue-700 hover:bg-blue-600 disabled:opacity-40 px-4 py-3 rounded-lg text-sm font-semibold transition">
+          className="bg-blue-700 hover:bg-blue-600 disabled:opacity-40 px-4 py-3 rounded-lg text-sm font-semibold transition col-span-2">
           Scroll ↑
         </button>
         <button onClick={() => sendCommand('TIKTOK_SWITCH_ACCOUNT', prompt('Nombre de la cuenta:') ?? '')}
