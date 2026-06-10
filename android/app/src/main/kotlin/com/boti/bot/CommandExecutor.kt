@@ -87,6 +87,30 @@ object CommandExecutor {
         return null
     }
 
+    // Igual que findNode pero solo retorna nodos con bounds válidos dentro de la pantalla.
+    // Necesario en TikTok donde hay múltiples videos en el árbol con bounds fuera de pantalla.
+    private fun findNodeOnScreen(node: AccessibilityNodeInfo, query: String, screenH: Int): AccessibilityNodeInfo? {
+        val desc = node.contentDescription?.toString()?.lowercase() ?: ""
+        val text = node.text?.toString()?.lowercase() ?: ""
+        if (desc.contains(query) || text.contains(query)) {
+            val rect = Rect()
+            node.getBoundsInScreen(rect)
+            if (rect.top >= 0 && rect.top < rect.bottom && rect.bottom <= screenH) {
+                return node
+            }
+        }
+        for (i in 0 until node.childCount) {
+            val child = node.getChild(i) ?: continue
+            val found = findNodeOnScreen(child, query, screenH)
+            if (found != null) {
+                if (found !== child) child.recycle()
+                return found
+            }
+            child.recycle()
+        }
+        return null
+    }
+
     private fun findClickableAncestor(node: AccessibilityNodeInfo): AccessibilityNodeInfo? {
         if (node.isClickable) return node
         var current: AccessibilityNodeInfo? = node.parent
@@ -145,39 +169,51 @@ object CommandExecutor {
             log(deviceId, "error", "Guardar: sin ventana activa")
             return
         }
+        val screenH = service.resources.displayMetrics.heightPixels
 
-        // TikTok reporta el bookmark con bounds Y negativos (bug de accesibilidad)
-        // Usamos el like como ancla — sus bounds SÍ son válidos
-        val likeNode = findNode(root, "dar me gusta")
+        // Buscar el nodo favoritos con bounds DENTRO de la pantalla
+        // TikTok tiene múltiples videos en el árbol — filtramos por coordenadas válidas
+        val node = findNodeOnScreen(root, "favoritos", screenH)
         root.recycle()
 
-        if (likeNode != null) {
-            val likeRect = Rect()
-            likeNode.getBoundsInScreen(likeRect)
-            likeNode.recycle()
-
-            if (!likeRect.isEmpty) {
-                // Bookmark está ~190px debajo del like en el panel derecho de TikTok
-                val x = likeRect.centerX().toFloat()
-                val y = likeRect.centerY() + 190f
-                tapAt(x, y)
-                log(deviceId, "info", "Guardado ✓ (relativo al like: ${x.toInt()},${y.toInt()})")
-                return
-            }
+        if (node != null) {
+            val rect = Rect()
+            node.getBoundsInScreen(rect)
+            node.recycle()
+            val x = rect.centerX().toFloat()
+            val y = rect.centerY().toFloat()
+            tapAt(x, y)
+            log(deviceId, "info", "Guardado ✓ (tap en $x, $y)")
+        } else {
+            log(deviceId, "warn", "Guardar: nodo favoritos no encontrado en pantalla")
         }
-
-        // Fallback final: coordenadas fijas
-        val m = service.resources.displayMetrics
-        tapAt(m.widthPixels * 0.93f, m.heightPixels * 0.495f)
-        log(deviceId, "warn", "Guardar: fallback coordenadas fijas")
     }
 
     private suspend fun tiktokFollow() {
         val deviceId = DeviceId.get() ?: return
-        // TikTok expone: desc="Seguir a [nombre]"
-        val found = findAndClick("seguir a")
-        log(deviceId, if (found) "info" else "warn",
-            if (found) "Seguido ✓" else "Botón seguir no encontrado")
+        val service = BotService.instance ?: return
+        val root = service.rootInActiveWindow ?: run {
+            log(deviceId, "error", "Follow: sin ventana activa")
+            return
+        }
+        val screenH = service.resources.displayMetrics.heightPixels
+
+        // Buscar "Seguir a" con bounds dentro de pantalla (el video actual)
+        val node = findNodeOnScreen(root, "seguir a", screenH)
+        root.recycle()
+
+        if (node != null) {
+            val clicked = node.performAction(AccessibilityNodeInfo.ACTION_CLICK)
+            if (!clicked) {
+                val rect = Rect()
+                node.getBoundsInScreen(rect)
+                if (!rect.isEmpty) tapAt(rect.centerX().toFloat(), rect.centerY().toFloat())
+            }
+            node.recycle()
+            log(deviceId, "info", "Seguido ✓")
+        } else {
+            log(deviceId, "warn", "Botón seguir no encontrado en pantalla")
+        }
     }
 
     private suspend fun tiktokSwitchAccount(accountName: String) {
@@ -235,12 +271,15 @@ object CommandExecutor {
         val click = if (node.isClickable) "✓" else " "
 
         if (!desc.isNullOrEmpty() || !text.isNullOrEmpty()) {
+            val rect = Rect()
+            node.getBoundsInScreen(rect)
+            val bounds = rect.toShortString()
             val label = when {
                 !desc.isNullOrEmpty() && !text.isNullOrEmpty() -> "desc=\"$desc\" text=\"$text\""
                 !desc.isNullOrEmpty() -> "desc=\"$desc\""
                 else -> "text=\"$text\""
             }
-            out.add("[$click][$cls] $label")
+            out.add("[$click][$cls] $bounds $label")
         }
         for (i in 0 until node.childCount) {
             val child = node.getChild(i) ?: continue
