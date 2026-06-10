@@ -287,7 +287,9 @@ object CommandExecutor {
         // 2. Activar el campo de texto tocando la barra inferior (siempre por coordenadas)
         // El campo de texto NO está en el árbol hasta que se toca y el teclado aparece
         log(deviceId, "info", "Comentar: activando campo de texto...")
-        tapAt(m.widthPixels * 0.40f, m.heightPixels * 0.91f)
+        // Barra de nuevo comentario está al fondo del panel (y≈95%), sobre la nav bar (y=2227)
+        // y=91% (2129) caía en el botón "Responder" del último comentario visible
+        tapAt(m.widthPixels * 0.40f, m.heightPixels * 0.95f)
         delay(1800) // esperar que aparezca el teclado
 
         // Buscar el EditText ahora que el teclado está activo
