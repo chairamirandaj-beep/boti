@@ -266,14 +266,29 @@ object CommandExecutor {
 
         fun step(n: Int, msg: String) = log(deviceId, "info", "[$n/6] $msg")
 
-        // 1. Ir al tab Perfil buscando en TODAS las ventanas (el nav bar es overlay separado)
+        // 1. Ir al tab Perfil — la barra inferior no expone nodos de accesibilidad en TikTok
         step(1, "Ir a Perfil (barra inferior)...")
         val profileTabFound = findAndClickInAllWindows("perfil", excludeContaining = "perfil de")
         if (!profileTabFound) {
-            log(deviceId, "info", "Perfil: usando coordenadas (x=90%, y=95%)")
-            tapAt(m.widthPixels * 0.90f, m.heightPixels * 0.950f)
+            // Barra inferior de TikTok: x=90% (último ícono), y dentro del rango 2190-2340
+            // Probamos dos posiciones: 93% y 95%
+            tapAt(m.widthPixels * 0.90f, m.heightPixels * 0.935f)
         }
-        delay(2000)
+        delay(1800)
+
+        // Verificar si llegamos al perfil buscando "Editar perfil"
+        val onProfile = service.rootInActiveWindow?.let { root ->
+            val found = findNode(root, "editar perfil") != null || findNode(root, "edit profile") != null
+            root.recycle(); found
+        } ?: false
+
+        if (!onProfile) {
+            log(deviceId, "warn", "Perfil no detectado — intentando y=95%...")
+            tapAt(m.widthPixels * 0.90f, m.heightPixels * 0.955f)
+            delay(1800)
+        } else {
+            log(deviceId, "info", "En Perfil ✓")
+        }
 
         // 2. Tocar las 3 barras horizontales (arriba a la derecha del perfil)
         // En la pantalla de perfil personal el ícono está en la esquina superior derecha
@@ -369,8 +384,11 @@ object CommandExecutor {
         val windows = service.windows
         if (windows != null && windows.isNotEmpty()) {
             log(deviceId, "info", "DEBUG: ${windows.size} ventanas")
-            windows.forEach { window ->
-                val root = window.root ?: return@forEach
+            windows.forEachIndexed { i, window ->
+                val wBounds = android.graphics.Rect()
+                window.getBoundsInScreen(wBounds)
+                log(deviceId, "info", "Ventana $i tipo=${window.type} bounds=${wBounds.toShortString()}")
+                val root = window.root ?: return@forEachIndexed
                 collectNodes(root, found)
                 root.recycle()
             }
