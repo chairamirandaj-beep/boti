@@ -325,7 +325,7 @@ object CommandExecutor {
             }
         }
         inputNode.recycle()
-        delay(800)
+        delay(2000) // esperar que desaparezca la popup "Pegar texto copiado"
 
         // 3. Publicar
         log(deviceId, "info", "Comentar: publicando...")
@@ -387,10 +387,13 @@ object CommandExecutor {
             node.getBoundsInScreen(rect)
             val cy = rect.centerY()
             val cx = rect.centerX()
-            if (cy in yMin..yMax && cx >= xMin) {
+            val nodeWidth = rect.right - rect.left
+            // Excluir contenedores anchos (>750px = ~70% de pantalla) — son wrappers, no botones
+            if (cy in yMin..yMax && cx >= xMin && nodeWidth < 750) {
                 val desc = node.contentDescription?.toString()?.lowercase() ?: ""
                 val text = node.text?.toString()?.lowercase() ?: ""
-                if (!desc.contains("cerrar") && !text.contains("cerrar")) return node
+                if (!desc.contains("cerrar") && !text.contains("cerrar")
+                    && !desc.contains("pegar") && !text.contains("pegar")) return node
             }
         }
         for (i in 0 until node.childCount) {
