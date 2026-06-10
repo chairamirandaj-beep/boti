@@ -333,6 +333,7 @@ object CommandExecutor {
             tapAt(971f, 2237f)
         }
         delay(800)
+        service.performGlobalAction(android.accessibilityservice.AccessibilityService.GLOBAL_ACTION_BACK)
         log(deviceId, "info", "Comentario publicado ✓: \"$text\"")
     }
 
