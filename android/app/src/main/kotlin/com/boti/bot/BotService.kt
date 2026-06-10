@@ -1,6 +1,8 @@
 package com.boti.bot
 
 import android.accessibilityservice.AccessibilityService
+import android.content.Context
+import android.os.PowerManager
 import android.view.accessibility.AccessibilityEvent
 import kotlinx.coroutines.*
 
@@ -13,10 +15,17 @@ class BotService : AccessibilityService() {
     @Volatile var isListening = true
 
     private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
+    private var wakeLock: PowerManager.WakeLock? = null
 
     override fun onServiceConnected() {
         instance = this
         DeviceId.init(applicationContext)
+
+        // WakeLock parcial: mantiene CPU activa, evita que Samsung congele el proceso
+        val pm = getSystemService(Context.POWER_SERVICE) as PowerManager
+        wakeLock = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "boti:BotServiceLock").also {
+            it.acquire()
+        }
 
         scope.launch {
             runCatching { SupabaseClient.updateDeviceStatus(DeviceId.get()!!, "online") }
@@ -45,6 +54,7 @@ class BotService : AccessibilityService() {
     override fun onDestroy() {
         super.onDestroy()
         CommandListener.stop()
+        wakeLock?.release()
         scope.launch {
             runCatching { SupabaseClient.updateDeviceStatus(DeviceId.get()!!, "offline") }
         }

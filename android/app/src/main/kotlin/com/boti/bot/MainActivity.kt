@@ -1,7 +1,9 @@
 package com.boti.bot
 
 import android.content.Intent
+import android.net.Uri
 import android.os.Bundle
+import android.os.PowerManager
 import android.provider.Settings
 import android.view.View
 import android.widget.Button
@@ -24,6 +26,8 @@ class MainActivity : AppCompatActivity() {
                 SupabaseClient.registerDevice(DeviceId.get()!!, android.os.Build.MODEL)
             }
         }
+
+        requestBatteryExemption()
 
         findViewById<Button>(R.id.btnEnable).setOnClickListener {
             startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
@@ -69,6 +73,15 @@ class MainActivity : AppCompatActivity() {
             btnToggle.text = "ACTIVAR"
             btnToggle.backgroundTintList = android.content.res.ColorStateList.valueOf(0xFF22C55E.toInt())
             btnToggle.visibility = View.VISIBLE
+        }
+    }
+
+    private fun requestBatteryExemption() {
+        val pm = getSystemService(PowerManager::class.java)
+        if (!pm.isIgnoringBatteryOptimizations(packageName)) {
+            startActivity(Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS).apply {
+                data = Uri.parse("package:$packageName")
+            })
         }
     }
 

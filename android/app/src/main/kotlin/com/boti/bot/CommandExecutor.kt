@@ -10,12 +10,17 @@ object CommandExecutor {
 
     suspend fun execute(action: String, payload: String?) {
         when (action.uppercase()) {
-            "SCROLL"        -> scroll()
-            "OPEN_APP"      -> openApp(payload ?: return)
-            "FIND_CLICK"    -> findAndClick(payload ?: return)
-            "WAIT"          -> delay(payload?.toLongOrNull() ?: 1000L)
-            "TIKTOK_LIKE"   -> tiktokLikeLoop(payload?.toIntOrNull() ?: 2)
-            "WHATSAPP_TAB"  -> whatsappTab(payload ?: "Novedades")
+            "SCROLL"                -> scroll()
+            "OPEN_APP"              -> openApp(payload ?: return)
+            "FIND_CLICK"            -> findAndClick(payload ?: return)
+            "WAIT"                  -> delay(payload?.toLongOrNull() ?: 1000L)
+            "TIKTOK_OPEN"           -> tiktokOpen()
+            "TIKTOK_LIKE"           -> tiktokLikeLoop(payload?.toIntOrNull() ?: 1)
+            "TIKTOK_FOLLOW"         -> tiktokFollow()
+            "TIKTOK_SWITCH_ACCOUNT" -> tiktokSwitchAccount(payload ?: return)
+            "SCREENSHOT"            -> takeScreenshot()
+            "WHATSAPP_TAB"          -> whatsappTab(payload ?: "Novedades")
+            "DEBUG_NODES"           -> debugNodes()
         }
     }
 
@@ -160,6 +165,109 @@ object CommandExecutor {
         } else {
             log(deviceId, "warn", "Pestaña '$tabName' no encontrada — WhatsApp debe estar en español y en la pantalla de chats")
         }
+    }
+
+    private suspend fun tiktokOpen() {
+        val deviceId = DeviceId.get() ?: return
+        openApp("com.zhiliaoapp.musically")
+        log(deviceId, "info", "TikTok abierto")
+        delay(3000)
+    }
+
+    private suspend fun tiktokFollow() {
+        val deviceId = DeviceId.get() ?: return
+        log(deviceId, "info", "Buscando botón Seguir/Follow...")
+
+        val found = findAndClick("seguir")
+            || findAndClick("follow")
+
+        if (found) {
+            log(deviceId, "info", "Seguido ✓")
+        } else {
+            // Fallback: coordenadas del botón Follow en TikTok (encima del avatar, lado derecho del video)
+            val service = BotService.instance ?: return
+            val metrics = service.resources.displayMetrics
+            val x = metrics.widthPixels * 0.93f
+            val y = metrics.heightPixels * 0.55f
+            val path = Path().apply { moveTo(x, y) }
+            val stroke = GestureDescription.StrokeDescription(path, 0L, 80L)
+            service.dispatchGesture(GestureDescription.Builder().addStroke(stroke).build(), null, null)
+            log(deviceId, "warn", "Follow: fallback coordenadas")
+        }
+    }
+
+    private suspend fun tiktokSwitchAccount(accountName: String) {
+        val deviceId = DeviceId.get() ?: return
+        log(deviceId, "info", "Cambiando a cuenta: $accountName")
+
+        // 1. Ir al tab Perfil
+        val profileFound = findAndClick("perfil") || findAndClick("profile") || findAndClick("yo")
+        delay(1500)
+
+        // 2. Tocar el nombre de usuario (abre el selector de cuentas)
+        val nameFound = findAndClick(accountName.lowercase())
+        if (!nameFound) {
+            // Tocar la zona del nombre de usuario en la parte superior del perfil (~centro, y=15%)
+            val service = BotService.instance ?: return
+            val metrics = service.resources.displayMetrics
+            val x = metrics.widthPixels * 0.5f
+            val y = metrics.heightPixels * 0.15f
+            val path = Path().apply { moveTo(x, y) }
+            val stroke = GestureDescription.StrokeDescription(path, 0L, 80L)
+            service.dispatchGesture(GestureDescription.Builder().addStroke(stroke).build(), null, null)
+            delay(1500)
+            // Intentar seleccionar la cuenta por nombre
+            findAndClick(accountName.lowercase())
+        }
+        log(deviceId, if (nameFound) "info" else "warn",
+            if (nameFound) "Cuenta '$accountName' seleccionada ✓" else "Cuenta '$accountName': buscar manual en selector")
+    }
+
+    private fun debugNodes() {
+        val deviceId = DeviceId.get() ?: return
+        val root = BotService.instance?.rootInActiveWindow ?: run {
+            log(deviceId, "error", "DEBUG: sin ventana activa")
+            return
+        }
+        val found = mutableListOf<String>()
+        collectNodes(root, found, depth = 0)
+        root.recycle()
+
+        if (found.isEmpty()) {
+            log(deviceId, "warn", "DEBUG: árbol vacío — TikTok no expone nodos")
+        } else {
+            log(deviceId, "info", "DEBUG: ${found.size} nodos encontrados")
+            found.take(30).forEach { log(deviceId, "info", it) }
+        }
+    }
+
+    private fun collectNodes(node: AccessibilityNodeInfo, out: MutableList<String>, depth: Int) {
+        val desc = node.contentDescription?.toString()?.trim()
+        val text = node.text?.toString()?.trim()
+        val cls  = node.className?.toString()?.substringAfterLast('.') ?: ""
+        val click = if (node.isClickable) "✓" else " "
+
+        if (!desc.isNullOrEmpty() || !text.isNullOrEmpty()) {
+            val label = when {
+                !desc.isNullOrEmpty() && !text.isNullOrEmpty() -> "desc=\"$desc\" text=\"$text\""
+                !desc.isNullOrEmpty() -> "desc=\"$desc\""
+                else -> "text=\"$text\""
+            }
+            out.add("[$click][$cls] $label")
+        }
+
+        for (i in 0 until node.childCount) {
+            val child = node.getChild(i) ?: continue
+            collectNodes(child, out, depth + 1)
+            child.recycle()
+        }
+    }
+
+    private fun takeScreenshot() {
+        val deviceId = DeviceId.get() ?: return
+        // AccessibilityService.takeScreenshot() requiere Android 11+ y callback
+        // Por ahora logueamos que el comando fue recibido
+        log(deviceId, "info", "Screenshot: usa el agente Python con ADB para capturas")
     }
 
     private fun log(deviceId: String, level: String, message: String) {

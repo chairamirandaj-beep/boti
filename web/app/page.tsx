@@ -170,10 +170,10 @@ export default function Home() {
         </button>
 
         <p className="col-span-2 text-xs text-gray-500 mt-2">GENERAL</p>
-        <button onClick={() => sendCommand('SCREENSHOT')}
+        <button onClick={() => sendCommand('DEBUG_NODES')}
           disabled={sending || !device}
           className="bg-gray-700 hover:bg-gray-600 disabled:opacity-40 px-4 py-3 rounded-lg text-sm font-semibold transition">
-          Screenshot
+          Ver Nodos 🔍
         </button>
         <button onClick={() => sendCommand('STOP')}
           disabled={sending || !device}
