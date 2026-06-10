@@ -29,6 +29,7 @@ object CommandExecutor {
             "TIKTOK_GET_ACCOUNTS"   -> tiktokGetAccounts()
             "TIKTOK_LIVE_COMMENT"   -> tiktokLiveComment(payload ?: return)
             "TIKTOK_LIVE_FOLLOW"    -> tiktokLiveFollow()
+            "TIKTOK_LIVE_GIFT"      -> tiktokLiveGift(payload)
             "WHATSAPP_TAB"          -> whatsappTab(payload ?: "Novedades")
             "DEBUG_NODES"           -> debugNodes()
             "DEBUG_ALL"             -> debugAll()
@@ -555,7 +556,9 @@ object CommandExecutor {
             "agregar cuenta", "añadir cuenta", "add account",
             "administrar cuentas", "manage accounts",
             "cambiar cuenta", "switch account", "cambiar de cuenta",
-            "iniciar sesión", "log in", "inicio de sesión"
+            "iniciar sesión", "log in", "inicio de sesión",
+            "módulo inferior", "cerrar", "marca de verificación",
+            "close", "verified", "bottom"
         )
         val accounts = mutableListOf<String>()
         val root = service.rootInActiveWindow
@@ -654,6 +657,40 @@ object CommandExecutor {
         delay(600)
         // No salir del live — el usuario sigue viendo el stream
         log(deviceId, "info", "Live comentado ✓: \"$text\"")
+    }
+
+    // Enviar regalo en Live.
+    //  - payload vacío → modo descubrimiento: abre el panel y vuelca los nodos clickeables
+    //  - payload = nombre/índice → (futuro) selecciona y envía ese regalo
+    private suspend fun tiktokLiveGift(payload: String?) {
+        val deviceId = DeviceId.get() ?: return
+        val service  = BotService.instance ?: return
+        val m        = service.resources.displayMetrics
+
+        // 1. Abrir panel de regalos
+        log(deviceId, "info", "Live regalo: abriendo panel...")
+        val opened = findAndClickInAllWindows("regalo", excludeContaining = "regalos enviados")
+            || findAndClickInAllWindows("gift")
+            || findAndClickInAllWindows("enviar regalo")
+        if (!opened) {
+            // Fallback: ícono de regalo suele estar abajo a la derecha, junto a la barra de chat
+            log(deviceId, "info", "Live regalo: sin texto, tocando ícono (x=96%, y=2235)...")
+            tapAt(m.widthPixels * 0.96f, 2235f)
+        }
+        delay(1800)
+
+        // 2. Volcar nodos clickeables del panel para mapear regalos + botón enviar
+        log(deviceId, "info", "Live regalo: nodos del panel ↓")
+        val windows = service.windows
+        if (windows != null) {
+            windows.forEachIndexed { i, w ->
+                val root = w.root ?: return@forEachIndexed
+                log(deviceId, "info", "=== Panel ventana $i tipo=${w.type} ===")
+                collectAllClickable(root, deviceId)
+                root.recycle()
+            }
+        }
+        log(deviceId, "info", "Live regalo: panel volcado ✓")
     }
 
     // ── WhatsApp ──────────────────────────────────────────────────────────────

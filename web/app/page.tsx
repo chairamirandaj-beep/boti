@@ -202,10 +202,14 @@ export default function Home() {
 
       {/* ── TikTok Live ── */}
       <p className="text-xs text-gray-500 mb-2 tracking-widest">TIKTOK LIVE</p>
-      <div className="grid grid-cols-1 gap-2 mb-4">
+      <div className="grid grid-cols-2 gap-2 mb-4">
         <Btn onClick={() => { const t = ask('Comentario para el live:'); if (t) sendCommand('TIKTOK_LIVE_COMMENT', t) }}
           disabled={off} color="bg-rose-700 hover:bg-rose-600">
           Chat Live 🔴
+        </Btn>
+        <Btn onClick={() => sendCommand('TIKTOK_LIVE_GIFT')}
+          disabled={off} color="bg-fuchsia-700 hover:bg-fuchsia-600">
+          Regalo 🎁
         </Btn>
       </div>
 
