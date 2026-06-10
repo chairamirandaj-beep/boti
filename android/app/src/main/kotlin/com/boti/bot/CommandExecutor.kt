@@ -340,11 +340,23 @@ object CommandExecutor {
             return
         }
 
-        // Método 2: coordenadas — Publicar está a la derecha de la barra de texto
-        // Debug confirmó: teclado y=1464-2227, barra de texto y=1464-1567, centro y≈1515 = 64.7%
-        // Publicar está a x≈80% (entre el texto y el botón Cerrar que está a x=95%)
-        log(deviceId, "info", "Comentar: tap Publicar por coordenadas (80%,65%)...")
-        tapAt(m.widthPixels * 0.80f, m.heightPixels * 0.65f)
+        // Método 2a: tecla Enter/Enviar del teclado Samsung (esquina inferior derecha del teclado)
+        // Debug: teclado y=1464-2227 (763px), fila inferior ~y=2036-2227, centro y≈2131 = 91%
+        // La tecla Enter/Publicar en Samsung keyboard está en x≈90%, y≈91%
+        log(deviceId, "info", "Comentar: tap tecla Enter/Publicar del teclado (90%,91%)...")
+        tapAt(m.widthPixels * 0.90f, m.heightPixels * 0.91f)
+        delay(800)
+
+        // Verificar si se publicó (el keyboard se cerraría)
+        val keyboardGone = service.windows?.none { it.type == 2 } ?: true
+        if (keyboardGone) {
+            log(deviceId, "info", "Comentario publicado ✓: \"$text\"")
+            return
+        }
+
+        // Método 2b: barra encima del teclado — Publicar a la derecha del campo de texto
+        log(deviceId, "info", "Comentar: tap barra de texto (88%,65%)...")
+        tapAt(m.widthPixels * 0.88f, m.heightPixels * 0.65f)
         delay(600)
         log(deviceId, "info", "Comentario enviado: \"$text\"")
     }
