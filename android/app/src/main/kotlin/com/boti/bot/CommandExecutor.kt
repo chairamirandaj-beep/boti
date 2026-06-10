@@ -125,6 +125,114 @@ object CommandExecutor {
         return true
     }
 
+    // Lee el saldo de Monedas del panel de regalos. El nodo de saldo tiene
+    // desc "Tienes N Monedas. Pulsa dos veces para recargar..." y text="N".
+    private fun readCoins(): Int? {
+        val service = BotService.instance ?: return null
+        val windows = service.windows ?: return null
+        for (w in windows) {
+            val root = w.root ?: continue
+            val n = findNode(root, "recargar")   // distingue saldo de "Recompensas/canjear"
+            if (n != null) {
+                val t = n.text?.toString() ?: ""
+                val d = n.contentDescription?.toString() ?: ""
+                if (n !== root) n.recycle()
+                root.recycle()
+                val num = Regex("\\d+").find(t)?.value ?: Regex("\\d+").find(d)?.value
+                return num?.toIntOrNull()
+            }
+            root.recycle()
+        }
+        return null
+    }
+
+    // Espera hasta `timeoutMs` a que el saldo baje respecto a `before` (el descuento
+    // de Monedas no es instantáneo). Devuelve true si detectó el descuento.
+    private suspend fun waitCoinsDrop(before: Int?, timeoutMs: Int): Boolean {
+        if (before == null) return false
+        var waited = 0
+        while (waited < timeoutMs) {
+            delay(250); waited += 250
+            val now = readCoins()
+            if (now != null && now < before) return true
+        }
+        return false
+    }
+
+    // Busca un regalo por nombre SOLO dentro de la zona del grid (evita coincidir con
+    // el chat de arriba). El grid va aprox. de y=1400 a y=2170.
+    private fun giftBounds(name: String): Rect? {
+        val service = BotService.instance ?: return null
+        val windows = service.windows ?: return null
+        val q = name.lowercase()
+        for (w in windows) {
+            val root = w.root ?: continue
+            val r = searchGift(root, q)
+            root.recycle()
+            if (r != null) return r
+        }
+        return null
+    }
+
+    private fun searchGift(node: AccessibilityNodeInfo, q: String): Rect? {
+        val desc = node.contentDescription?.toString()?.lowercase() ?: ""
+        val text = node.text?.toString()?.lowercase() ?: ""
+        if (desc.contains(q) || text.contains(q)) {
+            val rect = Rect(); node.getBoundsInScreen(rect)
+            if (!rect.isEmpty && rect.top in 1400..2170) return rect
+        }
+        for (i in 0 until node.childCount) {
+            val child = node.getChild(i) ?: continue
+            val r = searchGift(child, q)
+            child.recycle()
+            if (r != null) return r
+        }
+        return null
+    }
+
+    // Lista los nombres (desc) de regalos visibles en la zona del grid (y 1400-2170).
+    private fun listGiftNames(): List<String> {
+        val service = BotService.instance ?: return emptyList()
+        val windows = service.windows ?: return emptyList()
+        val out = mutableListOf<String>()
+        for (w in windows) {
+            val root = w.root ?: continue
+            collectGiftNames(root, out)
+            root.recycle()
+        }
+        return out.distinct()
+    }
+
+    private fun collectGiftNames(node: AccessibilityNodeInfo, out: MutableList<String>) {
+        val desc = node.contentDescription?.toString()?.trim() ?: ""
+        val cls  = node.className?.toString()?.substringAfterLast('.') ?: ""
+        if (cls == "ImageView" && desc.isNotEmpty() && !desc.lowercase().contains("moneda")) {
+            val rect = Rect(); node.getBoundsInScreen(rect)
+            if (rect.top in 1400..2170) out.add(desc)
+        }
+        for (i in 0 until node.childCount) {
+            val child = node.getChild(i) ?: continue
+            collectGiftNames(child, out)
+            child.recycle()
+        }
+    }
+
+    // Busca el regalo y, si no está visible, hace scroll en el grid hacia abajo y reintenta.
+    private suspend fun findGiftScrolling(deviceId: String, name: String, maxScrolls: Int): Rect? {
+        var r = giftBounds(name)
+        var n = 0
+        while (r == null && n <= maxScrolls) {
+            log(deviceId, "info", "Live regalo: visibles → ${listGiftNames().joinToString(", ")}")
+            if (n == maxScrolls) break
+            // Swipe hacia arriba dentro del grid → revela regalos de más abajo.
+            scrollBand(540f, 2050f, 1550f)
+            delay(800)
+            r = giftBounds(name)
+            n++
+        }
+        return r
+    }
+
     // Devuelve los bounds en pantalla del primer nodo cuyo texto/desc contenga `query`.
     private fun boundsOf(query: String): Rect? {
         val service = BotService.instance ?: return null
@@ -776,25 +884,44 @@ object CommandExecutor {
             return
         }
 
-        // Modo envío: seleccionar regalo por nombre.
-        val rect = boundsOf(name!!)
+        // Modo envío: localizar el regalo por nombre, con scroll en el grid si hace falta.
+        val rect = findGiftScrolling(deviceId, name!!, 6)
         if (rect == null) {
-            log(deviceId, "warn", "Live regalo: '$name' no visible (quizá hay que hacer scroll abajo)")
+            log(deviceId, "warn", "Live regalo: '$name' no encontrado ni tras scroll — revisa el nombre")
             return
         }
-        log(deviceId, "info", "Live regalo: seleccionando '$name' en (${rect.centerX()},${rect.centerY()})...")
-        tapAt(rect.centerX().toFloat(), rect.centerY().toFloat())
-        delay(900)
+        val cx = rect.centerX().toFloat()
+        val cy = rect.centerY().toFloat()
 
-        // 2. Tocar Enviar (aparece al seleccionar un regalo).
-        val sent = findAndClickInAllWindows("enviar") || findAndClickInAllWindows("send")
-        if (!sent) {
-            log(deviceId, "warn", "Live regalo: botón Enviar no encontrado — volcando para ubicarlo ↓")
-            collectAllClickable(service.rootInActiveWindow ?: return, deviceId)
-            return
+        // En este panel no hay botón Enviar: tocar el regalo lo selecciona, y tocarlo
+        // de nuevo (ya seleccionado) lo envía. PERO al abrir el panel el último regalo
+        // enviado queda PRESELECCIONADO → ese primer tap ya envía. El descuento de
+        // Monedas no es instantáneo, así que SONDEAMOS el saldo antes de tocar de nuevo.
+        val coinsBefore = readCoins()
+        if (coinsBefore == null) log(deviceId, "warn", "Live regalo: no pude leer el saldo")
+
+        log(deviceId, "info", "Live regalo: tap 1 en '$name' ($cx,$cy)... (saldo=$coinsBefore)")
+        tapAt(cx, cy)
+
+        // ¿El primer tap ya envió? (regalo preseleccionado). Esperar el descuento.
+        val enviadoEnTap1 = waitCoinsDrop(coinsBefore, 2500)
+        if (enviadoEnTap1) {
+            log(deviceId, "info", "Live regalo: estaba preseleccionado → enviado con 1 tap")
+        } else {
+            log(deviceId, "info", "Live regalo: solo seleccionó → tap 2 para enviar...")
+            tapAt(cx, cy)
+            waitCoinsDrop(coinsBefore, 2500)
         }
-        delay(800)
-        log(deviceId, "info", "Regalo '$name' enviado ✓")
+
+        val coinsAfter = readCoins()
+        // 3. Volver atrás para cerrar el panel (sin salir del live).
+        service.performGlobalAction(android.accessibilityservice.AccessibilityService.GLOBAL_ACTION_BACK)
+        delay(500)
+
+        val ok = coinsBefore == null || coinsAfter == null || coinsAfter < coinsBefore
+        log(deviceId, if (ok) "info" else "warn",
+            if (ok) "Regalo '$name' enviado ✓ (saldo $coinsBefore→$coinsAfter)"
+            else "Regalo '$name': saldo sin cambio ($coinsAfter) — quizá no se envió")
     }
 
     // Busca el primer nodo cuyo viewIdResourceName termine en `idSuffix` y lo clickea.
