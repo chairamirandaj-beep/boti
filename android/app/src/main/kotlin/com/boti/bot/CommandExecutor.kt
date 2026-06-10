@@ -263,7 +263,8 @@ object CommandExecutor {
     private suspend fun tiktokComment(text: String) {
         val deviceId = DeviceId.get() ?: return
         val service  = BotService.instance ?: return
-        val screenH  = service.resources.displayMetrics.heightPixels
+        val m        = service.resources.displayMetrics
+        val screenH  = m.heightPixels
 
         // 1. Abrir panel de comentarios
         log(deviceId, "info", "Comentar: abriendo comentarios...")
@@ -281,12 +282,31 @@ object CommandExecutor {
         delay(2000)
 
         // 2. Encontrar el campo de texto y escribir
-        log(deviceId, "info", "Comentar: escribiendo texto...")
-        val root2 = service.rootInActiveWindow ?: return
-        val inputNode = findNode(root2, "agregar un comentario")
-            ?: findNode(root2, "comentario")
-            ?: findEditText(root2)
-        root2.recycle()
+        log(deviceId, "info", "Comentar: buscando campo de texto...")
+
+        // Intentar por accesibilidad primero
+        var inputNode: AccessibilityNodeInfo? = service.rootInActiveWindow?.let { root ->
+            val n = findNode(root, "agregar un comentario")
+                ?: findNode(root, "añadir un comentario")
+                ?: findNode(root, "comentario")
+                ?: findEditText(root)
+            root.recycle()
+            n
+        }
+
+        // Si no encontró, tocar la barra de comentarios por coordenadas (fija al fondo del panel)
+        if (inputNode == null) {
+            log(deviceId, "info", "Comentar: tocando barra inferior por coordenadas...")
+            tapAt(m.widthPixels * 0.40f, m.heightPixels * 0.91f)
+            delay(1500) // esperar que aparezca el teclado
+
+            // Buscar el EditText de nuevo ahora que el teclado está activo
+            inputNode = service.rootInActiveWindow?.let { root ->
+                val n = findEditText(root) ?: findNode(root, "comentario")
+                root.recycle()
+                n
+            }
+        }
 
         if (inputNode == null) {
             log(deviceId, "warn", "Comentar: campo de texto no encontrado")
