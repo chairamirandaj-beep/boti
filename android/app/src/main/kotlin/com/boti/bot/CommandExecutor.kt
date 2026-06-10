@@ -327,50 +327,26 @@ object CommandExecutor {
         inputNode.recycle()
         delay(2000) // esperar que desaparezca la popup "Pegar texto copiado"
 
-        // 3. Publicar
-        // Esperar 4s para que desaparezca la popup "Pegar texto copiado" que bloquea el área
-        log(deviceId, "info", "Comentar: esperando que desaparezca popup de pegado...")
-        delay(3500)
+        delay(1200) // esperar popup de pegado
+        log(deviceId, "info", "Comentar: publicando...")
 
-        // Obtener posición dinámica del teclado (ventana tipo=2)
-        val keyboardTopY = run {
-            val rect = Rect()
-            service.windows?.find { it.type == 2 }?.getBoundsInScreen(rect)
-            if (rect.top > 0) rect.top else (m.heightPixels * 0.62f).toInt()
-        }
-        val barCenterY = keyboardTopY + (m.heightPixels * 0.022f).toInt()
-        log(deviceId, "info", "Comentar: publicando... (teclado top=$keyboardTopY)")
-
-        // Buscar "Publicar" en el árbol (podría aparecer después de que la popup se cierra)
-        val pubNode = findInAllWindowsByDesc("publicar")
-            ?: findInAllWindowsByDesc("enviar")
-        if (pubNode != null) {
-            val rect = Rect()
-            pubNode.getBoundsInScreen(rect)
-            log(deviceId, "info", "Publicar: nodo '${pubNode.contentDescription}' en ${rect.toShortString()}")
-            val ok = pubNode.performAction(AccessibilityNodeInfo.ACTION_CLICK)
-            if (!ok) tapAt(rect.centerX().toFloat(), rect.centerY().toFloat())
-            pubNode.recycle()
-            log(deviceId, "info", "Comentario publicado ✓: \"$text\"")
-            return
-        }
-
-        // Sin nodo — tap directo sobre la barra: entre texto (x≈529) y Cerrar (x=950)
-        // Probamos tres posiciones x en orden
-        val barY = barCenterY.toFloat()
-        val xPositions = listOf(0.80f, 0.75f, 0.70f)
+        // La barra de comentarios está ENCIMA del teclado, siempre en y≈1464-1567
+        // centro y≈1515 = 64.7% de pantalla (independiente de si el teclado top=1464 o 1567)
+        val barY = m.heightPixels * 0.647f
+        // Publicar está entre el texto (x≈529) y Cerrar (x≈950) → probar x=84%, 80%, 75%
+        val xPositions = listOf(0.84f, 0.80f, 0.75f)
         for (xPct in xPositions) {
             val tapX = m.widthPixels * xPct
             log(deviceId, "info", "Publicar: tap x=${tapX.toInt()} y=${barY.toInt()} (${(xPct*100).toInt()}%)")
             tapAt(tapX, barY)
-            delay(1000)
+            delay(1200)
             val kbGone = service.windows?.none { it.type == 2 } ?: true
             if (kbGone) {
                 log(deviceId, "info", "Comentario publicado ✓: \"$text\"")
                 return
             }
         }
-        log(deviceId, "warn", "Publicar: teclado sigue abierto tras 3 intentos")
+        log(deviceId, "warn", "Publicar: teclado sigue abierto — barra y=${barY.toInt()}")
     }
 
     private fun findInAllWindowsByDesc(desc: String): AccessibilityNodeInfo? {
