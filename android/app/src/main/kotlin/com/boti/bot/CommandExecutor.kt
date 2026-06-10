@@ -327,26 +327,12 @@ object CommandExecutor {
         inputNode.recycle()
         delay(2000) // esperar que desaparezca la popup "Pegar texto copiado"
 
-        delay(1200) // esperar popup de pegado
+        delay(1200)
         log(deviceId, "info", "Comentar: publicando...")
-
-        // La barra de comentarios está ENCIMA del teclado, siempre en y≈1464-1567
-        // centro y≈1515 = 64.7% de pantalla (independiente de si el teclado top=1464 o 1567)
-        val barY = m.heightPixels * 0.647f
-        // Publicar está entre el texto (x≈529) y Cerrar (x≈950) → probar x=84%, 80%, 75%
-        val xPositions = listOf(0.84f, 0.80f, 0.75f)
-        for (xPct in xPositions) {
-            val tapX = m.widthPixels * xPct
-            log(deviceId, "info", "Publicar: tap x=${tapX.toInt()} y=${barY.toInt()} (${(xPct*100).toInt()}%)")
-            tapAt(tapX, barY)
-            delay(1200)
-            val kbGone = service.windows?.none { it.type == 2 } ?: true
-            if (kbGone) {
-                log(deviceId, "info", "Comentario publicado ✓: \"$text\"")
-                return
-            }
-        }
-        log(deviceId, "warn", "Publicar: teclado sigue abierto — barra y=${barY.toInt()}")
+        // Botón Publicar en x=1000, y=1505 (coordenadas confirmadas)
+        tapAt(1000f, 1505f)
+        delay(800)
+        log(deviceId, "info", "Comentario publicado ✓: \"$text\"")
     }
 
     private fun findInAllWindowsByDesc(desc: String): AccessibilityNodeInfo? {
