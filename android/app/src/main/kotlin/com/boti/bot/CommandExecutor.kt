@@ -26,6 +26,7 @@ object CommandExecutor {
             "TIKTOK_COMMENT"        -> tiktokComment(payload ?: return)
             "TIKTOK_FOLLOW"         -> tiktokFollow()
             "TIKTOK_SWITCH_ACCOUNT" -> tiktokSwitchAccount(payload ?: return)
+            "TIKTOK_GET_ACCOUNTS"   -> tiktokGetAccounts()
             "TIKTOK_LIVE_COMMENT"   -> tiktokLiveComment(payload ?: return)
             "TIKTOK_LIVE_FOLLOW"    -> tiktokLiveFollow()
             "WHATSAPP_TAB"          -> whatsappTab(payload ?: "Novedades")
@@ -470,111 +471,118 @@ object CommandExecutor {
         val m        = service.resources.displayMetrics
         val screenH  = m.heightPixels
 
-        fun step(n: Int, msg: String) = log(deviceId, "info", "[$n/6] $msg")
+        fun step(n: Int, msg: String) = log(deviceId, "info", "[$n/5] $msg")
 
-        // 1. Ir al tab Perfil — la barra inferior no expone nodos de accesibilidad en TikTok
-        step(1, "Ir a Perfil (barra inferior)...")
-        val profileTabFound = findAndClickInAllWindows("perfil", excludeContaining = "perfil de")
-        if (!profileTabFound) {
-            // Barra inferior de TikTok: x=90% (último ícono), y dentro del rango 2190-2340
-            // Probamos dos posiciones: 93% y 95%
-            tapAt(m.widthPixels * 0.90f, m.heightPixels * 0.935f)
-        }
-        delay(1800)
+        // 1. Tab Perfil
+        step(1, "Perfil...")
+        val profileFound = findAndClickInAllWindows("perfil", excludeContaining = "perfil de")
+        if (!profileFound) tapAt(m.widthPixels * 0.90f, m.heightPixels * 0.935f)
+        delay(1200)
 
-        // Verificar si llegamos al perfil buscando "Editar perfil"
-        val onProfile = service.rootInActiveWindow?.let { root ->
-            val found = findNode(root, "editar perfil") != null || findNode(root, "edit profile") != null
-            root.recycle(); found
-        } ?: false
-
-        if (!onProfile) {
-            log(deviceId, "warn", "Perfil no detectado — intentando y=95%...")
-            tapAt(m.widthPixels * 0.90f, m.heightPixels * 0.955f)
-            delay(1800)
-        } else {
-            log(deviceId, "info", "En Perfil ✓")
-        }
-
-        // 2. Tocar las 3 barras horizontales (arriba a la derecha del perfil)
-        // En la pantalla de perfil personal el ícono está en la esquina superior derecha
-        step(2, "Abrir menú (3 barras)...")
+        // 2. Menú (3 barras arriba derecha)
+        step(2, "Menú...")
         val menuFound = findAndClick("más opciones") || findAndClick("more options")
-        if (!menuFound) {
-            tapAt(m.widthPixels * 0.96f, m.heightPixels * 0.055f)
-        }
-        delay(1500)
+        if (!menuFound) tapAt(m.widthPixels * 0.96f, m.heightPixels * 0.055f)
+        delay(900)
 
-        // 3. Tocar "Ajustes y privacidad"
-        step(3, "Ajustes y privacidad...")
+        // 3. Ajustes y privacidad
+        step(3, "Ajustes...")
         val settingsFound = findAndClick("ajustes y privacidad") || findAndClick("ajustes")
-        if (!settingsFound) {
-            log(deviceId, "warn", "Ajustes no encontrado — revisa que el panel esté abierto")
-            return
-        }
-        delay(2000)
+        if (!settingsFound) { log(deviceId, "warn", "Ajustes no encontrado"); return }
+        delay(1200)
 
-        // 4. Scroll hasta encontrar "Cambiar cuenta" (está al fondo de Ajustes)
+        // 4. Scroll hasta "Cambiar cuenta"
         step(4, "Buscando Cambiar cuenta...")
         var switchFound = false
-        repeat(15) { i ->
+        repeat(12) {
             if (switchFound || CommandListener.stopCurrent) return@repeat
-
-            // Log de nodos visibles para saber qué texto buscar
-            val root = service.rootInActiveWindow
-            if (root != null) {
-                val visible = mutableListOf<String>()
-                collectNodes(root, visible)
-                root.recycle()
-                val items = visible.filter { it.contains("cuenta") || it.contains("cerrar") || it.contains("salir") || it.contains("cambiar") }
-                if (items.isNotEmpty()) log(deviceId, "info", "Scroll $i: ${items.take(3).joinToString(" | ")}")
-            }
-
             switchFound = findAndClick("cambiar cuenta")
                 || findAndClick("cambiar de cuenta")
                 || findAndClick("switch account")
                 || findAndClick("gestionar cuentas")
-
-            if (!switchFound) {
-                scroll()
-                delay(1200)
-            }
+            if (!switchFound) { scroll(); delay(700) }
         }
-        if (!switchFound) {
-            log(deviceId, "warn", "Cambiar cuenta no encontrado — revisa el log para ver el texto exacto")
-            return
-        }
-        delay(1500)
+        if (!switchFound) { log(deviceId, "warn", "Cambiar cuenta no encontrado"); return }
+        delay(800)
 
-        // 5. Buscar y tocar la cuenta por nombre
-        step(5, "Seleccionando cuenta: $accountName...")
-        val screenNode = findNodeOnScreen(
-            service.rootInActiveWindow ?: return,
-            accountName.lowercase(),
-            screenH
-        )
-        val accountFound = if (screenNode != null) {
-            val clicked = screenNode.performAction(AccessibilityNodeInfo.ACTION_CLICK)
-            if (!clicked) {
-                val rect = Rect()
-                screenNode.getBoundsInScreen(rect)
-                if (!rect.isEmpty) tapAt(rect.centerX().toFloat(), rect.centerY().toFloat())
-            }
-            screenNode.recycle()
-            true
-        } else {
-            findAndClick(accountName.lowercase())
-        }
+        // 5. Seleccionar cuenta y esperar login
+        step(5, "Cuenta: $accountName...")
+        val root5 = service.rootInActiveWindow ?: return
+        val node  = findNodeOnScreen(root5, accountName.lowercase(), screenH)
+        root5.recycle()
+        val found = if (node != null) {
+            val clicked = node.performAction(AccessibilityNodeInfo.ACTION_CLICK)
+            if (!clicked) { val r = Rect(); node.getBoundsInScreen(r); if (!r.isEmpty) tapAt(r.centerX().toFloat(), r.centerY().toFloat()) }
+            node.recycle(); true
+        } else findAndClick(accountName.lowercase())
 
-        if (!accountFound) {
-            log(deviceId, "warn", "Cuenta '$accountName' no encontrada en la lista")
-            return
-        }
-
-        // 6. Esperar notificación de login
-        step(6, "Esperando inicio de sesión...")
-        delay(6000)
+        if (!found) { log(deviceId, "warn", "Cuenta '$accountName' no encontrada"); return }
+        delay(4000)
         log(deviceId, "info", "Cambio a '$accountName' completado ✓")
+    }
+
+    private suspend fun tiktokGetAccounts() {
+        val deviceId = DeviceId.get() ?: return
+        val service  = BotService.instance ?: return
+        val m        = service.resources.displayMetrics
+
+        log(deviceId, "info", "Obteniendo lista de cuentas...")
+
+        // Navegar a Perfil → Menú → Ajustes → Cambiar cuenta
+        val profileFound = findAndClickInAllWindows("perfil", excludeContaining = "perfil de")
+        if (!profileFound) tapAt(m.widthPixels * 0.90f, m.heightPixels * 0.935f)
+        delay(1200)
+
+        val menuFound = findAndClick("más opciones") || findAndClick("more options")
+        if (!menuFound) tapAt(m.widthPixels * 0.96f, m.heightPixels * 0.055f)
+        delay(900)
+
+        val settingsFound = findAndClick("ajustes y privacidad") || findAndClick("ajustes")
+        if (!settingsFound) { log(deviceId, "warn", "Ajustes no encontrado"); return }
+        delay(1200)
+
+        var switchFound = false
+        repeat(12) {
+            if (switchFound || CommandListener.stopCurrent) return@repeat
+            switchFound = findAndClick("cambiar cuenta") || findAndClick("cambiar de cuenta") || findAndClick("switch account")
+            if (!switchFound) { scroll(); delay(700) }
+        }
+        if (!switchFound) { log(deviceId, "warn", "Cambiar cuenta no encontrado"); return }
+        delay(1000)
+
+        // Leer cuentas de la pantalla
+        val SKIP = setOf(
+            "agregar cuenta", "añadir cuenta", "add account",
+            "administrar cuentas", "manage accounts",
+            "cambiar cuenta", "switch account", "cambiar de cuenta",
+            "iniciar sesión", "log in", "inicio de sesión"
+        )
+        val accounts = mutableListOf<String>()
+        val root = service.rootInActiveWindow
+        if (root != null) {
+            fun walk(node: AccessibilityNodeInfo?) {
+                node ?: return
+                val txt = (node.text?.toString() ?: node.contentDescription?.toString() ?: "").trim()
+                if (txt.isNotEmpty() && !txt.all { it.isDigit() || it == ':' || it == ',' } && txt.length >= 3) {
+                    val low = txt.lowercase()
+                    if (SKIP.none { low.contains(it) }) accounts.add(txt)
+                }
+                for (i in 0 until node.childCount) walk(node.getChild(i))
+            }
+            walk(root)
+            root.recycle()
+        }
+        val unique = accounts.distinct()
+
+        if (unique.isEmpty()) {
+            log(deviceId, "warn", "No se encontraron cuentas — usa DEBUG_NODES en esta pantalla")
+        } else {
+            SupabaseClient.updateTiktokAccounts(deviceId, unique)
+            log(deviceId, "info", "Cuentas guardadas: ${unique.joinToString(", ")}")
+        }
+
+        // Volver al inicio (Cambiar cuenta → Ajustes → menú → Perfil)
+        repeat(4) { service.performGlobalAction(android.accessibilityservice.AccessibilityService.GLOBAL_ACTION_BACK); delay(500) }
     }
 
     // ── TikTok Live ───────────────────────────────────────────────────────────

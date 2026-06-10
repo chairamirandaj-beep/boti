@@ -14,6 +14,7 @@ export interface Device {
   last_seen: string | null
   battery: number | null
   connected: boolean
+  tiktok_accounts: string[] | null
 }
 
 export interface Command {

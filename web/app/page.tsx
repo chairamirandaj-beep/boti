@@ -174,10 +174,30 @@ export default function Home() {
         <Btn onClick={() => sendCommand('SCROLL')}        disabled={off} color="bg-blue-700 hover:bg-blue-600" span>
           Scroll ↑
         </Btn>
-        <Btn onClick={() => { const c = ask('Nombre de la cuenta (ej: jc_miranda_):'); if (c) sendCommand('TIKTOK_SWITCH_ACCOUNT', c) }}
-          disabled={off} color="bg-yellow-700 hover:bg-yellow-600" span>
-          Cambiar Cuenta 👤
-        </Btn>
+      </div>
+
+      {/* ── Cuentas TikTok ── */}
+      <p className="text-xs text-gray-500 mb-2 tracking-widest">CUENTAS</p>
+      <div className="bg-gray-900 rounded-xl border border-gray-800 p-3 mb-4">
+        {(device?.tiktok_accounts ?? []).length > 0 ? (
+          <div className="grid grid-cols-2 gap-2 mb-2">
+            {(device!.tiktok_accounts as string[]).map((acc) => (
+              <Btn key={acc} onClick={() => sendCommand('TIKTOK_SWITCH_ACCOUNT', acc)}
+                disabled={off} color="bg-yellow-700 hover:bg-yellow-600">
+                👤 {acc}
+              </Btn>
+            ))}
+          </div>
+        ) : (
+          <p className="text-gray-600 text-xs mb-2">Sin cuentas — toca Sincronizar para leerlas del teléfono</p>
+        )}
+        <button
+          onClick={() => sendCommand('TIKTOK_GET_ACCOUNTS')}
+          disabled={off}
+          className="w-full text-xs text-gray-400 hover:text-gray-200 disabled:opacity-40 py-1.5 border border-gray-700 rounded-lg transition"
+        >
+          ↺ Sincronizar cuentas del teléfono
+        </button>
       </div>
 
       {/* ── TikTok Live ── */}
