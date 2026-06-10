@@ -1,6 +1,9 @@
 package com.boti.bot
 
 import android.accessibilityservice.GestureDescription
+import android.content.ClipData
+import android.content.ClipboardManager
+import android.content.Context
 import android.content.Intent
 import android.graphics.Path
 import android.graphics.Rect
@@ -281,50 +284,47 @@ object CommandExecutor {
         }
         delay(2000)
 
-        // 2. Encontrar el campo de texto y escribir
-        log(deviceId, "info", "Comentar: buscando campo de texto...")
+        // 2. Activar el campo de texto tocando la barra inferior (siempre por coordenadas)
+        // El campo de texto NO está en el árbol hasta que se toca y el teclado aparece
+        log(deviceId, "info", "Comentar: activando campo de texto...")
+        tapAt(m.widthPixels * 0.40f, m.heightPixels * 0.91f)
+        delay(1800) // esperar que aparezca el teclado
 
-        // Intentar por accesibilidad primero
+        // Buscar el EditText ahora que el teclado está activo
         var inputNode: AccessibilityNodeInfo? = service.rootInActiveWindow?.let { root ->
             val n = findNode(root, "agregar un comentario")
                 ?: findNode(root, "añadir un comentario")
-                ?: findNode(root, "comentario")
                 ?: findEditText(root)
             root.recycle()
             n
         }
 
-        // Si no encontró, tocar la barra de comentarios por coordenadas (fija al fondo del panel)
         if (inputNode == null) {
-            log(deviceId, "info", "Comentar: tocando barra inferior por coordenadas...")
-            tapAt(m.widthPixels * 0.40f, m.heightPixels * 0.91f)
-            delay(1500) // esperar que aparezca el teclado
+            log(deviceId, "warn", "Comentar: campo de texto no encontrado tras activar teclado")
+            return
+        }
 
-            // Buscar el EditText de nuevo ahora que el teclado está activo
-            inputNode = service.rootInActiveWindow?.let { root ->
-                val n = findEditText(root) ?: findNode(root, "comentario")
-                root.recycle()
-                n
+        log(deviceId, "info", "Comentar: escribiendo texto via portapapeles...")
+        inputNode.performAction(AccessibilityNodeInfo.ACTION_FOCUS)
+        delay(200)
+
+        // Método preferido: portapapeles (más compatible con campos customizados de TikTok)
+        val clipboard = service.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+        clipboard.setPrimaryClip(ClipData.newPlainText("boti_comment", text))
+        delay(200)
+        val pasted = inputNode.performAction(AccessibilityNodeInfo.ACTION_PASTE)
+
+        // Fallback: ACTION_SET_TEXT
+        if (!pasted) {
+            val bundle = Bundle().apply { putCharSequence(ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, text) }
+            val typed = inputNode.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, bundle)
+            if (!typed) {
+                inputNode.recycle()
+                log(deviceId, "warn", "Comentar: no pudo escribir el texto")
+                return
             }
         }
-
-        if (inputNode == null) {
-            log(deviceId, "warn", "Comentar: campo de texto no encontrado")
-            return
-        }
-
-        inputNode.performAction(AccessibilityNodeInfo.ACTION_FOCUS)
-        delay(300)
-        val bundle = Bundle().apply {
-            putCharSequence(ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, text)
-        }
-        val typed = inputNode.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, bundle)
         inputNode.recycle()
-
-        if (!typed) {
-            log(deviceId, "warn", "Comentar: no pudo escribir el texto")
-            return
-        }
         delay(800)
 
         // 3. Publicar — varios métodos en orden de confiabilidad
