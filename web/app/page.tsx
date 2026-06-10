@@ -172,6 +172,18 @@ export default function Home() {
           Cambiar Cuenta 👤
         </button>
 
+        <p className="col-span-2 text-xs text-gray-500 mt-2">TIKTOK LIVE</p>
+        <button onClick={() => { const t = prompt('Comentario para el live:'); if (t?.trim()) sendCommand('TIKTOK_LIVE_COMMENT', t.trim()) }}
+          disabled={sending || !device}
+          className="bg-rose-700 hover:bg-rose-600 disabled:opacity-40 px-4 py-3 rounded-lg text-sm font-semibold transition">
+          Chat Live 🔴
+        </button>
+        <button onClick={() => sendCommand('TIKTOK_LIVE_FOLLOW')}
+          disabled={sending || !device}
+          className="bg-purple-700 hover:bg-purple-600 disabled:opacity-40 px-4 py-3 rounded-lg text-sm font-semibold transition">
+          Seguir Live
+        </button>
+
         <p className="col-span-2 text-xs text-gray-500 mt-2">WHATSAPP</p>
         <button onClick={() => sendCommand('WHATSAPP_TAB', 'Novedades')}
           disabled={sending || !device}
@@ -184,6 +196,11 @@ export default function Home() {
           disabled={sending || !device}
           className="bg-gray-700 hover:bg-gray-600 disabled:opacity-40 px-4 py-3 rounded-lg text-sm font-semibold transition">
           Ver Nodos 🔍
+        </button>
+        <button onClick={() => sendCommand('DEBUG_ALL')}
+          disabled={sending || !device}
+          className="bg-gray-600 hover:bg-gray-500 disabled:opacity-40 px-4 py-3 rounded-lg text-sm font-semibold transition">
+          Clickeables 🔎
         </button>
         <button onClick={() => sendCommand('STOP')}
           disabled={sending || !device}

@@ -26,8 +26,11 @@ object CommandExecutor {
             "TIKTOK_COMMENT"        -> tiktokComment(payload ?: return)
             "TIKTOK_FOLLOW"         -> tiktokFollow()
             "TIKTOK_SWITCH_ACCOUNT" -> tiktokSwitchAccount(payload ?: return)
+            "TIKTOK_LIVE_COMMENT"   -> tiktokLiveComment(payload ?: return)
+            "TIKTOK_LIVE_FOLLOW"    -> tiktokLiveFollow()
             "WHATSAPP_TAB"          -> whatsappTab(payload ?: "Novedades")
             "DEBUG_NODES"           -> debugNodes()
+            "DEBUG_ALL"             -> debugAll()
         }
     }
 
@@ -549,6 +552,78 @@ object CommandExecutor {
         log(deviceId, "info", "Cambio a '$accountName' completado ✓")
     }
 
+    // ── TikTok Live ───────────────────────────────────────────────────────────
+
+    private suspend fun tiktokLiveFollow() {
+        val deviceId = DeviceId.get() ?: return
+        val found = findAndClick("empezar a seguir")
+        log(deviceId, if (found) "info" else "warn",
+            if (found) "Live: seguido ✓" else "Live: botón follow no encontrado")
+    }
+
+    private suspend fun tiktokLiveComment(text: String) {
+        val deviceId = DeviceId.get() ?: return
+        val service  = BotService.instance ?: return
+        val m        = service.resources.displayMetrics
+
+        // 1. Buscar input del chat — Live usa "deja un comentario" o similar
+        log(deviceId, "info", "Live comentar: buscando input...")
+        var inputNode: AccessibilityNodeInfo? = service.rootInActiveWindow?.let { root ->
+            val n = findNode(root, "deja un comentario")
+                ?: findNode(root, "comentario")
+                ?: findNode(root, "añadir comentario")
+                ?: findEditText(root)
+            root.recycle()
+            n
+        }
+        // Si no encontrado, tocar la barra de chat (abajo izquierda del live)
+        if (inputNode == null) {
+            log(deviceId, "info", "Live comentar: tocando barra de chat...")
+            tapAt(m.widthPixels * 0.25f, m.heightPixels * 0.92f)
+            delay(1800)
+            inputNode = service.rootInActiveWindow?.let { root ->
+                val n = findEditText(root)
+                    ?: findNode(root, "comentario")
+                root.recycle()
+                n
+            }
+        }
+        if (inputNode == null) {
+            log(deviceId, "warn", "Live comentar: campo no encontrado")
+            return
+        }
+
+        // 2. Pegar texto
+        log(deviceId, "info", "Live comentar: pegando texto...")
+        inputNode.performAction(AccessibilityNodeInfo.ACTION_FOCUS)
+        delay(200)
+        val clipboard = service.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+        clipboard.setPrimaryClip(ClipData.newPlainText("boti_live", text))
+        delay(200)
+        val pasted = inputNode.performAction(AccessibilityNodeInfo.ACTION_PASTE)
+        if (!pasted) {
+            val bundle = Bundle().apply { putCharSequence(ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, text) }
+            val typed = inputNode.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, bundle)
+            if (!typed) { inputNode.recycle(); log(deviceId, "warn", "Live comentar: no pudo escribir"); return }
+        }
+        inputNode.recycle()
+        delay(1000)
+
+        // 3. Enviar — buscar botón send o usar coordenadas
+        log(deviceId, "info", "Live comentar: enviando...")
+        val keyboardOpen = service.windows?.any { it.type == 2 } ?: false
+        val sent = findAndClickInAllWindows("enviar")
+            || findAndClickInAllWindows("send")
+            || findAndClickInAllWindows("publicar")
+        if (!sent) {
+            // Botón enviar suele estar a la derecha del input, encima del teclado
+            if (keyboardOpen) tapAt(971f, 1505f) else tapAt(971f, 2237f)
+        }
+        delay(600)
+        service.performGlobalAction(android.accessibilityservice.AccessibilityService.GLOBAL_ACTION_BACK)
+        log(deviceId, "info", "Live comentado ✓: \"$text\"")
+    }
+
     // ── WhatsApp ──────────────────────────────────────────────────────────────
 
     private suspend fun whatsappTab(tabName: String) {
@@ -617,6 +692,45 @@ object CommandExecutor {
         for (i in 0 until node.childCount) {
             val child = node.getChild(i) ?: continue
             collectNodes(child, out)
+            child.recycle()
+        }
+    }
+
+    // Muestra TODOS los nodos clickeables (incluso sin texto/desc) — útil para Live
+    private fun debugAll() {
+        val deviceId = DeviceId.get() ?: return
+        val service  = BotService.instance ?: return
+        val windows  = service.windows
+        if (windows == null || windows.isEmpty()) {
+            val root = service.rootInActiveWindow ?: run { log(deviceId, "error", "DEBUG_ALL: sin ventana"); return }
+            collectAllClickable(root, deviceId)
+            root.recycle()
+            return
+        }
+        log(deviceId, "info", "DEBUG_ALL: ${windows.size} ventanas")
+        windows.forEachIndexed { i, window ->
+            val root = window.root ?: return@forEachIndexed
+            log(deviceId, "info", "=== Ventana $i tipo=${window.type} ===")
+            collectAllClickable(root, deviceId)
+            root.recycle()
+        }
+    }
+
+    private fun collectAllClickable(node: AccessibilityNodeInfo, deviceId: String) {
+        val rect  = Rect()
+        node.getBoundsInScreen(rect)
+        val desc  = node.contentDescription?.toString()?.trim() ?: ""
+        val text  = node.text?.toString()?.trim() ?: ""
+        val cls   = node.className?.toString()?.substringAfterLast('.') ?: ""
+        if (node.isClickable) {
+            try {
+                SupabaseClient.addLog(deviceId, "info",
+                    "[✓][$cls] ${rect.toShortString()} desc='$desc' text='$text'")
+            } catch (_: Exception) {}
+        }
+        for (i in 0 until node.childCount) {
+            val child = node.getChild(i) ?: continue
+            collectAllClickable(child, deviceId)
             child.recycle()
         }
     }
