@@ -207,7 +207,7 @@ export default function Home() {
           disabled={off} color="bg-rose-700 hover:bg-rose-600">
           Chat Live 🔴
         </Btn>
-        <Btn onClick={() => sendCommand('TIKTOK_LIVE_GIFT')}
+        <Btn onClick={() => { const c = ask('Coordenada ícono regalo x,y (vacío = 906,2239):'); sendCommand('TIKTOK_LIVE_GIFT', c ?? undefined) }}
           disabled={off} color="bg-fuchsia-700 hover:bg-fuchsia-600">
           Regalo 🎁
         </Btn>

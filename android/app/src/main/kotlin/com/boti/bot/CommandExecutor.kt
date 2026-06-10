@@ -665,22 +665,19 @@ object CommandExecutor {
     private suspend fun tiktokLiveGift(payload: String?) {
         val deviceId = DeviceId.get() ?: return
         val service  = BotService.instance ?: return
-        val m        = service.resources.displayMetrics
 
-        // 1. Abrir panel de regalos
-        log(deviceId, "info", "Live regalo: abriendo panel...")
-        val opened = findAndClickInAllWindows("regalo", excludeContaining = "regalos enviados")
-            || findAndClickInAllWindows("gift")
-            || findAndClickInAllWindows("enviar regalo")
-        if (!opened) {
-            // Fallback: ícono de regalo suele estar abajo a la derecha, junto a la barra de chat
-            log(deviceId, "info", "Live regalo: sin texto, tocando ícono (x=96%, y=2235)...")
-            tapAt(m.widthPixels * 0.96f, 2235f)
-        }
+        // payload "x,y" → probar esa coordenada (modo descubrimiento del ícono de regalo).
+        // Sin payload → coord por defecto.
+        val p = payload?.trim()
+        val coords = p?.split(",")?.mapNotNull { it.trim().toFloatOrNull() }
+        val (gx, gy) = if (coords != null && coords.size == 2) coords[0] to coords[1]
+                       else 906f to 2239f
+        log(deviceId, "info", "Live regalo: tocando ($gx,$gy)...")
+        tapAt(gx, gy)
         delay(1800)
 
-        // 2. Volcar nodos clickeables del panel para mapear regalos + botón enviar
-        log(deviceId, "info", "Live regalo: nodos del panel ↓")
+        // 2. Volcar el panel resultante (con IDs) para confirmar y mapear regalos
+        log(deviceId, "info", "Live regalo: panel resultante ↓")
         val windows = service.windows
         if (windows != null) {
             windows.forEachIndexed { i, w ->
@@ -691,6 +688,40 @@ object CommandExecutor {
             }
         }
         log(deviceId, "info", "Live regalo: panel volcado ✓")
+    }
+
+    // Busca el primer nodo cuyo viewIdResourceName termine en `idSuffix` y lo clickea.
+    private fun clickById(idSuffix: String): Boolean {
+        val service = BotService.instance ?: return false
+        val windows = service.windows ?: return false
+        for (window in windows) {
+            val root = window.root ?: continue
+            val node = findNodeById(root, idSuffix)
+            if (node != null) {
+                val ok = node.performAction(AccessibilityNodeInfo.ACTION_CLICK)
+                if (!ok) tapNodeCenter(node)
+                node.recycle()
+                root.recycle()
+                return true
+            }
+            root.recycle()
+        }
+        return false
+    }
+
+    private fun findNodeById(node: AccessibilityNodeInfo, idSuffix: String): AccessibilityNodeInfo? {
+        val id = node.viewIdResourceName?.substringAfterLast('/') ?: ""
+        if (id == idSuffix) return node
+        for (i in 0 until node.childCount) {
+            val child = node.getChild(i) ?: continue
+            val found = findNodeById(child, idSuffix)
+            if (found != null) {
+                if (found !== child) child.recycle()
+                return found
+            }
+            child.recycle()
+        }
+        return null
     }
 
     // ── WhatsApp ──────────────────────────────────────────────────────────────
@@ -791,10 +822,11 @@ object CommandExecutor {
         val desc  = node.contentDescription?.toString()?.trim() ?: ""
         val text  = node.text?.toString()?.trim() ?: ""
         val cls   = node.className?.toString()?.substringAfterLast('.') ?: ""
+        val id    = node.viewIdResourceName?.substringAfterLast('/') ?: ""
         if (node.isClickable) {
             try {
                 SupabaseClient.addLog(deviceId, "info",
-                    "[✓][$cls] ${rect.toShortString()} desc='$desc' text='$text'")
+                    "[✓][$cls#$id] ${rect.toShortString()} desc='$desc' text='$text'")
             } catch (_: Exception) {}
         }
         for (i in 0 until node.childCount) {
