@@ -308,20 +308,34 @@ object CommandExecutor {
         }
         delay(2000)
 
-        // 4. Scroll hasta encontrar "Cambiar cuenta" (puede estar al fondo)
+        // 4. Scroll hasta encontrar "Cambiar cuenta" (está al fondo de Ajustes)
         step(4, "Buscando Cambiar cuenta...")
         var switchFound = false
-        repeat(8) {
-            if (!switchFound && !CommandListener.stopCurrent) {
-                switchFound = findAndClick("cambiar cuenta")
-                if (!switchFound) {
-                    scroll()
-                    delay(800)
-                }
+        repeat(15) { i ->
+            if (switchFound || CommandListener.stopCurrent) return@repeat
+
+            // Log de nodos visibles para saber qué texto buscar
+            val root = service.rootInActiveWindow
+            if (root != null) {
+                val visible = mutableListOf<String>()
+                collectNodes(root, visible)
+                root.recycle()
+                val items = visible.filter { it.contains("cuenta") || it.contains("cerrar") || it.contains("salir") || it.contains("cambiar") }
+                if (items.isNotEmpty()) log(deviceId, "info", "Scroll $i: ${items.take(3).joinToString(" | ")}")
+            }
+
+            switchFound = findAndClick("cambiar cuenta")
+                || findAndClick("cambiar de cuenta")
+                || findAndClick("switch account")
+                || findAndClick("gestionar cuentas")
+
+            if (!switchFound) {
+                scroll()
+                delay(1200)
             }
         }
         if (!switchFound) {
-            log(deviceId, "warn", "Cambiar cuenta no encontrado — intenta scrollear manualmente")
+            log(deviceId, "warn", "Cambiar cuenta no encontrado — revisa el log para ver el texto exacto")
             return
         }
         delay(1500)
