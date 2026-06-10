@@ -53,6 +53,18 @@ object CommandExecutor {
         )
     }
 
+    // Scroll vertical confinado a una banda de la pantalla (p.ej. el panel de regalos),
+    // para no mover el contenido de fondo (el live). Va de yFrom a yTo en la columna x.
+    private fun scrollBand(x: Float, yFrom: Float, yTo: Float) {
+        val service = BotService.instance ?: return
+        val path = Path().apply { moveTo(x, yFrom); lineTo(x, yTo) }
+        service.dispatchGesture(
+            GestureDescription.Builder()
+                .addStroke(GestureDescription.StrokeDescription(path, 0L, 350L))
+                .build(), null, null
+        )
+    }
+
     private fun tapAt(x: Float, y: Float) {
         val service = BotService.instance ?: return
         val path = Path().apply { moveTo(x, y) }
@@ -69,6 +81,67 @@ object CommandExecutor {
         if (rect.isEmpty) return false
         tapAt(rect.centerX().toFloat(), rect.centerY().toFloat())
         return true
+    }
+
+    // ── Guardias de accesibilidad ──────────────────────────────────────────────
+    // Verifican el estado de la pantalla ANTES de tocar coordenadas fijas.
+
+    // ¿Existe en alguna ventana un nodo cuyo texto/desc contenga `query`?
+    private fun screenHas(query: String): Boolean {
+        val service = BotService.instance ?: return false
+        val windows = service.windows ?: return false
+        val q = query.lowercase()
+        for (w in windows) {
+            val root = w.root ?: continue
+            val n = findNode(root, q)
+            val hit = n != null
+            if (n != null && n !== root) n.recycle()
+            root.recycle()
+            if (hit) return true
+        }
+        return false
+    }
+
+    // ¿Existe en alguna ventana un nodo cuyo resource id termine en `idSuffix`?
+    private fun screenHasId(idSuffix: String): Boolean {
+        val service = BotService.instance ?: return false
+        val windows = service.windows ?: return false
+        for (w in windows) {
+            val root = w.root ?: continue
+            val n = findNodeById(root, idSuffix)
+            val hit = n != null
+            if (n != null && n !== root) n.recycle()
+            root.recycle()
+            if (hit) return true
+        }
+        return false
+    }
+
+    // Toca una coordenada SOLO si el guardia confirma la pantalla correcta.
+    // Devuelve true si tocó, false si el guardia falló (no toca a ciegas).
+    private fun tapGuarded(x: Float, y: Float, guard: () -> Boolean): Boolean {
+        if (!guard()) return false
+        tapAt(x, y)
+        return true
+    }
+
+    // Devuelve los bounds en pantalla del primer nodo cuyo texto/desc contenga `query`.
+    private fun boundsOf(query: String): Rect? {
+        val service = BotService.instance ?: return null
+        val windows = service.windows ?: return null
+        val q = query.lowercase()
+        for (w in windows) {
+            val root = w.root ?: continue
+            val n = findNode(root, q)
+            if (n != null) {
+                val rect = Rect()
+                n.getBoundsInScreen(rect)
+                if (n !== root) n.recycle()
+                root.recycle()
+                if (!rect.isEmpty && rect.top >= 0) return rect
+            } else root.recycle()
+        }
+        return null
     }
 
     // ── Node search ───────────────────────────────────────────────────────────
@@ -660,34 +733,68 @@ object CommandExecutor {
     }
 
     // Enviar regalo en Live.
-    //  - payload vacío → modo descubrimiento: abre el panel y vuelca los nodos clickeables
-    //  - payload = nombre/índice → (futuro) selecciona y envía ese regalo
+    //  - payload vacío           → abre el panel y lista los regalos disponibles (descubrimiento)
+    //  - payload = nombre regalo  → abre panel, selecciona ese regalo por nombre y toca Enviar
     private suspend fun tiktokLiveGift(payload: String?) {
         val deviceId = DeviceId.get() ?: return
         val service  = BotService.instance ?: return
 
-        // payload "x,y" → probar esa coordenada (modo descubrimiento del ícono de regalo).
-        // Sin payload → coord por defecto.
-        val p = payload?.trim()
-        val coords = p?.split(",")?.mapNotNull { it.trim().toFloatOrNull() }
-        val (gx, gy) = if (coords != null && coords.size == 2) coords[0] to coords[1]
-                       else 906f to 2239f
-        log(deviceId, "info", "Live regalo: tocando ($gx,$gy)...")
-        tapAt(gx, gy)
-        delay(1800)
+        // GUARDIA 1: estar en un live.
+        val enLive = screenHasId("hsi") || screenHas("regalos") || screenHas("envíale") || screenHas("monedas")
+        if (!enLive) {
+            log(deviceId, "warn", "Live regalo: no estás en un live — no toco nada")
+            return
+        }
 
-        // 2. Volcar el panel resultante (con IDs) para confirmar y mapear regalos
-        log(deviceId, "info", "Live regalo: panel resultante ↓")
-        val windows = service.windows
-        if (windows != null) {
-            windows.forEachIndexed { i, w ->
-                val root = w.root ?: return@forEachIndexed
-                log(deviceId, "info", "=== Panel ventana $i tipo=${w.type} ===")
-                collectAllClickable(root, deviceId)
+        // 1. Abrir el panel si no está abierto (el saldo "Monedas" solo existe en el panel).
+        if (!screenHas("monedas")) {
+            log(deviceId, "info", "Live regalo: abriendo panel (900,2246)...")
+            tapAt(900f, 2246f)
+            delay(2200)
+        }
+        // GUARDIA 2: confirmar panel abierto.
+        if (!screenHas("monedas")) {
+            log(deviceId, "warn", "Live regalo: el panel no abrió — revisa la coord del ícono")
+            return
+        }
+
+        val name = payload?.trim()
+        val esDescubrimiento = name.isNullOrBlank() || name == "null"
+
+        // Modo descubrimiento: listar regalos visibles.
+        if (esDescubrimiento) {
+            val found = mutableListOf<String>()
+            service.windows?.forEach { w ->
+                val root = w.root ?: return@forEach
+                collectNodes(root, found)
                 root.recycle()
             }
+            val regalos = found.filter { it.lowercase().contains("moneda") }
+            log(deviceId, "info", "Live regalo: ${regalos.size} regalos visibles")
+            regalos.take(40).forEach { log(deviceId, "info", "🎁 $it") }
+            log(deviceId, "info", "Live regalo: panel listado ✓ (escribe un nombre para enviar)")
+            return
         }
-        log(deviceId, "info", "Live regalo: panel volcado ✓")
+
+        // Modo envío: seleccionar regalo por nombre.
+        val rect = boundsOf(name!!)
+        if (rect == null) {
+            log(deviceId, "warn", "Live regalo: '$name' no visible (quizá hay que hacer scroll abajo)")
+            return
+        }
+        log(deviceId, "info", "Live regalo: seleccionando '$name' en (${rect.centerX()},${rect.centerY()})...")
+        tapAt(rect.centerX().toFloat(), rect.centerY().toFloat())
+        delay(900)
+
+        // 2. Tocar Enviar (aparece al seleccionar un regalo).
+        val sent = findAndClickInAllWindows("enviar") || findAndClickInAllWindows("send")
+        if (!sent) {
+            log(deviceId, "warn", "Live regalo: botón Enviar no encontrado — volcando para ubicarlo ↓")
+            collectAllClickable(service.rootInActiveWindow ?: return, deviceId)
+            return
+        }
+        delay(800)
+        log(deviceId, "info", "Regalo '$name' enviado ✓")
     }
 
     // Busca el primer nodo cuyo viewIdResourceName termine en `idSuffix` y lo clickea.
