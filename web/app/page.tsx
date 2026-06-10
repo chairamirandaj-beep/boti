@@ -33,6 +33,24 @@ const LOG_COLOR: Record<string, string> = {
   error: 'text-red-400',
 }
 
+function Btn({ onClick, disabled, color, span, children }: {
+  onClick: () => void
+  disabled: boolean
+  color: string
+  span?: boolean
+  children: React.ReactNode
+}) {
+  return (
+    <button
+      onClick={onClick}
+      disabled={disabled}
+      className={`${color} disabled:opacity-40 px-4 py-3 rounded-xl text-sm font-semibold transition active:scale-95 ${span ? 'col-span-2' : ''}`}
+    >
+      {children}
+    </button>
+  )
+}
+
 export default function Home() {
   const [device, setDevice]   = useState<Device | null>(null)
   const [logs, setLogs]       = useState<Log[]>([])
@@ -84,21 +102,27 @@ export default function Home() {
     setSending(false)
   }
 
+  const ask = (label: string) => { const v = prompt(label); return v?.trim() || null }
+
   const cmdInfo  = lastCmd ? CMD_STATUS[lastCmd.status] : null
   const isPaused = device?.status === 'paused'
+  const off      = sending || !device
 
   return (
     <main className="min-h-screen bg-gray-950 text-white p-4 font-mono max-w-lg mx-auto">
-      <h1 className="text-xl font-bold mb-4">CONTROL BOT</h1>
+
+      <h1 className="text-lg font-bold tracking-widest mb-4 text-gray-100">BOTI CONTROL</h1>
 
       {/* Dispositivo */}
-      <div className="bg-gray-900 rounded-xl p-3 mb-4 border border-gray-800">
+      <div className="bg-gray-900 rounded-xl p-3 mb-3 border border-gray-800">
         <p className="text-xs text-gray-500 mb-1">DISPOSITIVO</p>
         {device ? (
           <div className="flex items-center gap-3">
-            <div className={`w-2.5 h-2.5 rounded-full ${STATUS_DOT[device.status] ?? 'bg-gray-400'} ${device.status === 'online' ? 'animate-pulse' : ''}`} />
+            <div className={`w-2 h-2 rounded-full ${STATUS_DOT[device.status] ?? 'bg-gray-400'} ${device.status === 'online' ? 'animate-pulse' : ''}`} />
             <span className="font-semibold text-sm">{device.name}</span>
-            <span className={`text-xs font-bold ${device.status === 'paused' ? 'text-orange-400' : device.status === 'online' ? 'text-green-400' : 'text-gray-400'}`}>
+            <span className={`text-xs font-bold ml-auto ${
+              device.status === 'paused' ? 'text-orange-400' :
+              device.status === 'online' ? 'text-green-400' : 'text-gray-400'}`}>
               {STATUS_LABEL[device.status] ?? device.status.toUpperCase()}
             </span>
           </div>
@@ -107,14 +131,13 @@ export default function Home() {
         )}
       </div>
 
-      {/* Banner de pausado */}
       {isPaused && (
-        <div className="bg-orange-950 border border-orange-700 rounded-xl px-3 py-2 mb-4 text-orange-300 text-xs">
-          El bot está pausado desde la app. Los comandos se enviarán cuando lo actives de nuevo.
+        <div className="bg-orange-950 border border-orange-800 rounded-xl px-3 py-2 mb-3 text-orange-300 text-xs">
+          Bot pausado — actívalo desde la app para recibir comandos
         </div>
       )}
 
-      {/* Estado del último comando */}
+      {/* Último comando */}
       <div className="bg-gray-900 rounded-xl p-3 mb-4 border border-gray-800 min-h-[52px]">
         <p className="text-xs text-gray-500 mb-1">ÚLTIMO COMANDO</p>
         {lastCmd && cmdInfo ? (
@@ -122,9 +145,9 @@ export default function Home() {
             <span className={`text-sm font-semibold ${cmdInfo.color} ${cmdInfo.animate ? 'animate-pulse' : ''}`}>
               {cmdInfo.label}
             </span>
-            <p className="text-xs text-gray-500 mt-0.5">
-              {lastCmd.action}{lastCmd.payload ? ` : ${lastCmd.payload}` : ''}
-              {lastCmd.executed_at && ` — ${new Date(lastCmd.executed_at).toLocaleTimeString()}`}
+            <p className="text-xs text-gray-600 mt-0.5">
+              {lastCmd.action}{lastCmd.payload ? ` · ${lastCmd.payload}` : ''}
+              {lastCmd.executed_at && ` · ${new Date(lastCmd.executed_at).toLocaleTimeString()}`}
             </p>
           </div>
         ) : (
@@ -132,86 +155,60 @@ export default function Home() {
         )}
       </div>
 
-      {/* Botones de comando */}
+      {/* ── TikTok ── */}
+      <p className="text-xs text-gray-500 mb-2 tracking-widest">TIKTOK</p>
       <div className="grid grid-cols-2 gap-2 mb-4">
-
-        <p className="col-span-2 text-xs text-gray-500 mt-1">TIKTOK</p>
-        <button onClick={() => sendCommand('TIKTOK_OPEN')}
-          disabled={sending || !device}
-          className="bg-gray-700 hover:bg-gray-600 disabled:opacity-40 px-4 py-3 rounded-lg text-sm font-semibold transition">
+        <Btn onClick={() => sendCommand('TIKTOK_OPEN')}   disabled={off} color="bg-gray-700 hover:bg-gray-600">
           Abrir TikTok
-        </button>
-        <button onClick={() => sendCommand('TIKTOK_LIKE')}
-          disabled={sending || !device}
-          className="bg-pink-700 hover:bg-pink-600 disabled:opacity-40 px-4 py-3 rounded-lg text-sm font-semibold transition">
+        </Btn>
+        <Btn onClick={() => sendCommand('TIKTOK_LIKE')}   disabled={off} color="bg-pink-700 hover:bg-pink-600">
           Like ♥
-        </button>
-        <button onClick={() => sendCommand('TIKTOK_FOLLOW')}
-          disabled={sending || !device}
-          className="bg-purple-700 hover:bg-purple-600 disabled:opacity-40 px-4 py-3 rounded-lg text-sm font-semibold transition">
-          Seguir
-        </button>
-        <button onClick={() => { const t = prompt('Texto del comentario:'); if (t?.trim()) sendCommand('TIKTOK_COMMENT', t.trim()) }}
-          disabled={sending || !device}
-          className="bg-cyan-700 hover:bg-cyan-600 disabled:opacity-40 px-4 py-3 rounded-lg text-sm font-semibold transition">
+        </Btn>
+        <Btn onClick={() => { const t = ask('Texto del comentario:'); if (t) sendCommand('TIKTOK_COMMENT', t) }}
+          disabled={off} color="bg-cyan-700 hover:bg-cyan-600">
           Comentar 💬
-        </button>
-        <button onClick={() => sendCommand('TIKTOK_SAVE')}
-          disabled={sending || !device}
-          className="bg-indigo-700 hover:bg-indigo-600 disabled:opacity-40 px-4 py-3 rounded-lg text-sm font-semibold transition">
+        </Btn>
+        <Btn onClick={() => sendCommand('TIKTOK_SAVE')}   disabled={off} color="bg-indigo-700 hover:bg-indigo-600">
           Guardar 🔖
-        </button>
-        <button onClick={() => sendCommand('SCROLL')}
-          disabled={sending || !device}
-          className="bg-blue-700 hover:bg-blue-600 disabled:opacity-40 px-4 py-3 rounded-lg text-sm font-semibold transition col-span-2">
+        </Btn>
+        <Btn onClick={() => sendCommand('SCROLL')}        disabled={off} color="bg-blue-700 hover:bg-blue-600" span>
           Scroll ↑
-        </button>
-        <button onClick={() => { const c = prompt('Nombre exacto de la cuenta (ej: jc_miranda_):'); if (c?.trim()) sendCommand('TIKTOK_SWITCH_ACCOUNT', c.trim()) }}
-          disabled={sending || !device}
-          className="bg-yellow-700 hover:bg-yellow-600 disabled:opacity-40 px-4 py-3 rounded-lg text-sm font-semibold transition col-span-2">
+        </Btn>
+        <Btn onClick={() => { const c = ask('Nombre de la cuenta (ej: jc_miranda_):'); if (c) sendCommand('TIKTOK_SWITCH_ACCOUNT', c) }}
+          disabled={off} color="bg-yellow-700 hover:bg-yellow-600" span>
           Cambiar Cuenta 👤
-        </button>
+        </Btn>
+      </div>
 
-        <p className="col-span-2 text-xs text-gray-500 mt-2">TIKTOK LIVE</p>
-        <button onClick={() => { const t = prompt('Comentario para el live:'); if (t?.trim()) sendCommand('TIKTOK_LIVE_COMMENT', t.trim()) }}
-          disabled={sending || !device}
-          className="bg-rose-700 hover:bg-rose-600 disabled:opacity-40 px-4 py-3 rounded-lg text-sm font-semibold transition">
+      {/* ── TikTok Live ── */}
+      <p className="text-xs text-gray-500 mb-2 tracking-widest">TIKTOK LIVE</p>
+      <div className="grid grid-cols-1 gap-2 mb-4">
+        <Btn onClick={() => { const t = ask('Comentario para el live:'); if (t) sendCommand('TIKTOK_LIVE_COMMENT', t) }}
+          disabled={off} color="bg-rose-700 hover:bg-rose-600">
           Chat Live 🔴
-        </button>
-        <button onClick={() => sendCommand('TIKTOK_LIVE_FOLLOW')}
-          disabled={sending || !device}
-          className="bg-purple-700 hover:bg-purple-600 disabled:opacity-40 px-4 py-3 rounded-lg text-sm font-semibold transition">
-          Seguir Live
-        </button>
+        </Btn>
+      </div>
 
-        <p className="col-span-2 text-xs text-gray-500 mt-2">WHATSAPP</p>
-        <button onClick={() => sendCommand('WHATSAPP_TAB', 'Novedades')}
-          disabled={sending || !device}
-          className="bg-green-700 hover:bg-green-600 disabled:opacity-40 px-4 py-3 rounded-lg text-sm font-semibold transition col-span-2">
-          WhatsApp → Novedades
-        </button>
-
-        <p className="col-span-2 text-xs text-gray-500 mt-2">GENERAL</p>
-        <button onClick={() => sendCommand('DEBUG_NODES')}
-          disabled={sending || !device}
-          className="bg-gray-700 hover:bg-gray-600 disabled:opacity-40 px-4 py-3 rounded-lg text-sm font-semibold transition">
-          Ver Nodos 🔍
-        </button>
-        <button onClick={() => sendCommand('DEBUG_ALL')}
-          disabled={sending || !device}
-          className="bg-gray-600 hover:bg-gray-500 disabled:opacity-40 px-4 py-3 rounded-lg text-sm font-semibold transition">
-          Clickeables 🔎
-        </button>
-        <button onClick={() => sendCommand('STOP')}
-          disabled={sending || !device}
-          className="bg-red-700 hover:bg-red-600 disabled:opacity-40 px-4 py-3 rounded-lg text-sm font-semibold transition">
+      {/* ── Debug / Control ── */}
+      <p className="text-xs text-gray-500 mb-2 tracking-widest">CONTROL</p>
+      <div className="grid grid-cols-3 gap-2 mb-4">
+        <Btn onClick={() => sendCommand('DEBUG_NODES')} disabled={off} color="bg-gray-700 hover:bg-gray-600">
+          Nodos 🔍
+        </Btn>
+        <Btn onClick={() => sendCommand('DEBUG_ALL')}   disabled={off} color="bg-gray-700 hover:bg-gray-600">
+          Clicks 🔎
+        </Btn>
+        <Btn onClick={() => sendCommand('STOP')}        disabled={off} color="bg-red-800 hover:bg-red-700">
           STOP
-        </button>
+        </Btn>
       </div>
 
       {/* Logs */}
       <div className="bg-gray-900 rounded-xl border border-gray-800 overflow-hidden">
-        <p className="text-xs text-gray-500 px-3 py-2 border-b border-gray-800">PASOS EN VIVO</p>
+        <div className="flex items-center justify-between px-3 py-2 border-b border-gray-800">
+          <p className="text-xs text-gray-500 tracking-widest">PASOS EN VIVO</p>
+          <p className="text-xs text-gray-600">{logs.length} entradas</p>
+        </div>
         <div className="h-72 overflow-y-auto p-3 space-y-1">
           {logs.length === 0 ? (
             <p className="text-gray-600 text-xs">Aquí verás cada paso que hace el teléfono...</p>
@@ -225,6 +222,7 @@ export default function Home() {
           )}
         </div>
       </div>
+
     </main>
   )
 }
