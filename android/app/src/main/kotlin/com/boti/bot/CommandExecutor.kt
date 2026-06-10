@@ -87,6 +87,48 @@ object CommandExecutor {
         return null
     }
 
+    // Busca en TODAS las ventanas (para nav bar que está en ventana overlay)
+    private fun findAndClickInAllWindows(query: String, excludeContaining: String = ""): Boolean {
+        val service = BotService.instance ?: return false
+        val windows = service.windows ?: return false
+        for (window in windows) {
+            val root = window.root ?: continue
+            val node = findNodeExcluding(root, query.lowercase(), excludeContaining.lowercase())
+            if (node != null) {
+                val clicked = node.performAction(AccessibilityNodeInfo.ACTION_CLICK)
+                if (!clicked) {
+                    val rect = Rect()
+                    node.getBoundsInScreen(rect)
+                    if (!rect.isEmpty) tapAt(rect.centerX().toFloat(), rect.centerY().toFloat())
+                }
+                node.recycle()
+                root.recycle()
+                return true
+            }
+            root.recycle()
+        }
+        return false
+    }
+
+    private fun findNodeExcluding(node: AccessibilityNodeInfo, query: String, exclude: String): AccessibilityNodeInfo? {
+        val desc = node.contentDescription?.toString()?.lowercase() ?: ""
+        val text = node.text?.toString()?.lowercase() ?: ""
+        val matches = desc.contains(query) || text.contains(query)
+        val excluded = exclude.isNotEmpty() && (desc.contains(exclude) || text.contains(exclude))
+        if (matches && !excluded) return node
+
+        for (i in 0 until node.childCount) {
+            val child = node.getChild(i) ?: continue
+            val found = findNodeExcluding(child, query, exclude)
+            if (found != null) {
+                if (found !== child) child.recycle()
+                return found
+            }
+            child.recycle()
+        }
+        return null
+    }
+
     // Igual que findNode pero solo retorna nodos con bounds válidos dentro de la pantalla.
     // Necesario en TikTok donde hay múltiples videos en el árbol con bounds fuera de pantalla.
     private fun findNodeOnScreen(node: AccessibilityNodeInfo, query: String, screenH: Int): AccessibilityNodeInfo? {
@@ -224,11 +266,13 @@ object CommandExecutor {
 
         fun step(n: Int, msg: String) = log(deviceId, "info", "[$n/6] $msg")
 
-        // 1. Ir al tab Perfil — último ícono de la barra de navegación inferior
-        // No usamos findAndClick("perfil") porque encuentra el perfil del creador del video.
-        // El tab está siempre en x=90%, y=97% de la pantalla.
+        // 1. Ir al tab Perfil buscando en TODAS las ventanas (el nav bar es overlay separado)
         step(1, "Ir a Perfil (barra inferior)...")
-        tapAt(m.widthPixels * 0.90f, m.heightPixels * 0.968f)
+        val profileTabFound = findAndClickInAllWindows("perfil", excludeContaining = "perfil de")
+        if (!profileTabFound) {
+            log(deviceId, "info", "Perfil: usando coordenadas (x=90%, y=95%)")
+            tapAt(m.widthPixels * 0.90f, m.heightPixels * 0.950f)
+        }
         delay(2000)
 
         // 2. Tocar las 3 barras horizontales (arriba a la derecha del perfil)
@@ -315,16 +359,32 @@ object CommandExecutor {
 
     private fun debugNodes() {
         val deviceId = DeviceId.get() ?: return
-        val root = BotService.instance?.rootInActiveWindow ?: run {
-            log(deviceId, "error", "DEBUG: sin ventana activa")
+        val service = BotService.instance ?: run {
+            log(deviceId, "error", "DEBUG: sin servicio")
             return
         }
         val found = mutableListOf<String>()
-        collectNodes(root, found)
-        root.recycle()
+
+        // Buscar en TODAS las ventanas (nav bar de TikTok está en ventana separada)
+        val windows = service.windows
+        if (windows != null && windows.isNotEmpty()) {
+            log(deviceId, "info", "DEBUG: ${windows.size} ventanas")
+            windows.forEach { window ->
+                val root = window.root ?: return@forEach
+                collectNodes(root, found)
+                root.recycle()
+            }
+        } else {
+            val root = service.rootInActiveWindow ?: run {
+                log(deviceId, "error", "DEBUG: sin ventana activa")
+                return
+            }
+            collectNodes(root, found)
+            root.recycle()
+        }
 
         log(deviceId, "info", "DEBUG: ${found.size} nodos encontrados")
-        found.take(30).forEach { log(deviceId, "info", it) }
+        found.take(40).forEach { log(deviceId, "info", it) }
     }
 
     private fun collectNodes(node: AccessibilityNodeInfo, out: MutableList<String>) {
