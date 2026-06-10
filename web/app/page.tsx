@@ -57,6 +57,7 @@ export default function Home() {
   const [lastCmd, setLastCmd] = useState<Command | null>(null)
   const [sending, setSending] = useState(false)
   const [liveLink, setLiveLink] = useState('')
+  const [fromLive, setFromLive] = useState(false)
 
   useEffect(() => {
     fetchDevice()
@@ -178,12 +179,21 @@ export default function Home() {
       </div>
 
       {/* ── Cuentas TikTok ── */}
-      <p className="text-xs text-gray-500 mb-2 tracking-widest">CUENTAS</p>
+      <div className="flex items-center justify-between mb-2">
+        <p className="text-xs text-gray-500 tracking-widest">CUENTAS</p>
+        <button
+          onClick={() => setFromLive(v => !v)}
+          className={`text-xs px-2 py-1 rounded-lg border transition ${
+            fromLive ? 'bg-rose-700 border-rose-600 text-white' : 'bg-gray-900 border-gray-700 text-gray-400'}`}
+        >
+          {fromLive ? '🔴 Desde live' : '○ Desde live'}
+        </button>
+      </div>
       <div className="bg-gray-900 rounded-xl border border-gray-800 p-3 mb-4">
         {(device?.tiktok_accounts ?? []).length > 0 ? (
           <div className="grid grid-cols-2 gap-2 mb-2">
             {(device!.tiktok_accounts as string[]).map((acc) => (
-              <Btn key={acc} onClick={() => sendCommand('TIKTOK_SWITCH_ACCOUNT', acc)}
+              <Btn key={acc} onClick={() => sendCommand(fromLive ? 'TIKTOK_LIVE_SWITCH_ACCOUNT' : 'TIKTOK_SWITCH_ACCOUNT', acc)}
                 disabled={off} color="bg-yellow-700 hover:bg-yellow-600">
                 👤 {acc}
               </Btn>

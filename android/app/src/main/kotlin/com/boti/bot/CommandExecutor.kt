@@ -28,6 +28,7 @@ object CommandExecutor {
             "TIKTOK_COMMENT"        -> tiktokComment(payload ?: return)
             "TIKTOK_FOLLOW"         -> tiktokFollow()
             "TIKTOK_SWITCH_ACCOUNT" -> tiktokSwitchAccount(payload ?: return)
+            "TIKTOK_LIVE_SWITCH_ACCOUNT" -> tiktokLiveSwitchAccount(payload ?: return)
             "TIKTOK_GET_ACCOUNTS"   -> tiktokGetAccounts()
             "TIKTOK_LIVE_COMMENT"   -> tiktokLiveComment(payload ?: return)
             "TIKTOK_LIVE_FOLLOW"    -> tiktokLiveFollow()
@@ -694,6 +695,17 @@ object CommandExecutor {
             child.recycle()
         }
         return null
+    }
+
+    // Cambiar cuenta partiendo desde un live: un back para volver a "Para ti" y luego
+    // el mismo proceso de cambiar cuenta.
+    private suspend fun tiktokLiveSwitchAccount(accountName: String) {
+        val deviceId = DeviceId.get() ?: return
+        val service  = BotService.instance ?: return
+        log(deviceId, "info", "Live: saliendo del live (atrás) para cambiar cuenta...")
+        service.performGlobalAction(android.accessibilityservice.AccessibilityService.GLOBAL_ACTION_BACK)
+        delay(2000)
+        tiktokSwitchAccount(accountName)
     }
 
     private suspend fun tiktokSwitchAccount(accountName: String) {
