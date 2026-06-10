@@ -330,41 +330,59 @@ object CommandExecutor {
         // 3. Publicar
         log(deviceId, "info", "Comentar: publicando...")
 
-        // Obtener el top del teclado dinámicamente (ventana tipo=2)
+        // Obtener posición del teclado y de la barra
         val keyboardTopY = run {
             val rect = Rect()
             service.windows?.find { it.type == 2 }?.getBoundsInScreen(rect)
             if (rect.top > 0) rect.top else (m.heightPixels * 0.62f).toInt()
         }
-        val barBottomY = keyboardTopY + (m.heightPixels * 0.055f).toInt()
-        log(deviceId, "info", "Comentar: barra texto y=$keyboardTopY-$barBottomY")
+        val barCenterY = keyboardTopY + (m.heightPixels * 0.022f).toInt()
 
-        // Buscar cualquier nodo clickeable en la barra (a la derecha del texto, no-Cerrar)
-        val postNode = findClickableInBar(keyboardTopY, barBottomY, m.widthPixels / 2)
-        if (postNode != null) {
+        // En TikTok el botón "Publicar" cambia visualmente cuando hay texto
+        // pero la etiqueta de accesibilidad sigue siendo "Cerrar" — clickeamos ese nodo
+        // y verificamos si el teclado se cerró (= comentario enviado)
+        val cerrarNode = findInAllWindowsByDesc("cerrar")
+        if (cerrarNode != null) {
             val rect = Rect()
-            postNode.getBoundsInScreen(rect)
-            val desc = postNode.contentDescription?.toString() ?: ""
-            val txt  = postNode.text?.toString() ?: ""
-            log(deviceId, "info", "Publicar: nodo encontrado desc='$desc' text='$txt' bounds=${rect.toShortString()}")
-            val clicked = postNode.performAction(AccessibilityNodeInfo.ACTION_CLICK)
+            cerrarNode.getBoundsInScreen(rect)
+            log(deviceId, "info", "Publicar: click nodo 'Cerrar' en ${rect.toShortString()}")
+            val clicked = cerrarNode.performAction(AccessibilityNodeInfo.ACTION_CLICK)
             if (!clicked) tapAt(rect.centerX().toFloat(), rect.centerY().toFloat())
-            postNode.recycle()
-            log(deviceId, "info", "Comentario publicado ✓: \"$text\"")
-            return
+            cerrarNode.recycle()
+            delay(1000)
+            val kbGone = service.windows?.none { it.type == 2 } ?: true
+            if (kbGone) {
+                log(deviceId, "info", "Comentario publicado ✓: \"$text\"")
+                return
+            }
+            log(deviceId, "warn", "Publicar: Cerrar cerró el teclado sin publicar — intentando coords...")
         }
 
-        // Si no encontró nodo, loguear todos los clickeables de la barra para diagnóstico
-        log(deviceId, "warn", "Publicar: no se encontró botón — logueando barra...")
-        logBarNodes(keyboardTopY, barBottomY)
-
-        // Fallback: tap a la derecha de la barra (justo antes de Cerrar)
-        val tapX = m.widthPixels * 0.87f
-        val tapY = (keyboardTopY + barBottomY) / 2f
-        log(deviceId, "info", "Publicar: tap fallback x=${tapX.toInt()} y=${tapY.toInt()}")
+        // Fallback de coordenadas: Publicar está entre el texto y el botón Cerrar
+        // Debug: texto en x≈529, Cerrar en x=950 → Publicar centro en x≈740
+        val tapX = m.widthPixels * 0.70f
+        val tapY = barCenterY.toFloat()
+        log(deviceId, "info", "Publicar: tap coords x=${tapX.toInt()} y=${tapY.toInt()}")
         tapAt(tapX, tapY)
-        delay(600)
-        log(deviceId, "info", "Comentario enviado: \"$text\"")
+        delay(800)
+        val kbGone2 = service.windows?.none { it.type == 2 } ?: true
+        if (kbGone2) {
+            log(deviceId, "info", "Comentario publicado ✓ (coords): \"$text\"")
+        } else {
+            log(deviceId, "warn", "Publicar: teclado sigue abierto — coords incorrectas")
+        }
+    }
+
+    private fun findInAllWindowsByDesc(desc: String): AccessibilityNodeInfo? {
+        val service = BotService.instance ?: return null
+        val windows = service.windows ?: return null
+        for (window in windows) {
+            val root = window.root ?: continue
+            val node = findNode(root, desc.lowercase())
+            if (node != null) { root.recycle(); return node }
+            root.recycle()
+        }
+        return null
     }
 
     // Busca cualquier nodo clickeable en el rango y de la barra de comentarios,
