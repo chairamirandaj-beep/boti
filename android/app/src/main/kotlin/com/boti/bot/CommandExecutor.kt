@@ -4,6 +4,7 @@ import android.accessibilityservice.GestureDescription
 import android.content.Intent
 import android.graphics.Path
 import android.graphics.Rect
+import android.os.Bundle
 import android.view.accessibility.AccessibilityNodeInfo
 import kotlinx.coroutines.delay
 
@@ -139,11 +140,36 @@ object CommandExecutor {
 
     private suspend fun tiktokSave() {
         val deviceId = DeviceId.get() ?: return
-        // TikTok expone: desc="Agrega o elimina este video de Favoritos." (isClickable=false)
-        // findAndClick hace gesture tap en el centro del nodo cuando ACTION_CLICK falla
-        val found = findAndClick("favoritos")
-        log(deviceId, if (found) "info" else "warn",
-            if (found) "Guardado en favoritos ✓" else "Botón favoritos no encontrado")
+        val service = BotService.instance ?: return
+        val root = service.rootInActiveWindow ?: run {
+            log(deviceId, "error", "Guardar: sin ventana activa")
+            return
+        }
+
+        // TikTok reporta el bookmark con bounds Y negativos (bug de accesibilidad)
+        // Usamos el like como ancla — sus bounds SÍ son válidos
+        val likeNode = findNode(root, "dar me gusta")
+        root.recycle()
+
+        if (likeNode != null) {
+            val likeRect = Rect()
+            likeNode.getBoundsInScreen(likeRect)
+            likeNode.recycle()
+
+            if (!likeRect.isEmpty) {
+                // Bookmark está ~190px debajo del like en el panel derecho de TikTok
+                val x = likeRect.centerX().toFloat()
+                val y = likeRect.centerY() + 190f
+                tapAt(x, y)
+                log(deviceId, "info", "Guardado ✓ (relativo al like: ${x.toInt()},${y.toInt()})")
+                return
+            }
+        }
+
+        // Fallback final: coordenadas fijas
+        val m = service.resources.displayMetrics
+        tapAt(m.widthPixels * 0.93f, m.heightPixels * 0.495f)
+        log(deviceId, "warn", "Guardar: fallback coordenadas fijas")
     }
 
     private suspend fun tiktokFollow() {
