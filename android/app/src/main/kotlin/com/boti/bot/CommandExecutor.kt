@@ -327,38 +327,113 @@ object CommandExecutor {
         inputNode.recycle()
         delay(800)
 
-        // 3. Publicar — varios métodos en orden de confiabilidad
+        // 3. Publicar
         log(deviceId, "info", "Comentar: publicando...")
 
-        // Método 1: buscar botón en TODAS las ventanas (incluye overlays de TikTok)
-        val posted = findAndClickInAllWindows("publicar")
-            || findAndClickInAllWindows("enviar")
-            || findAndClickInAllWindows("post")
+        // Obtener el top del teclado dinámicamente (ventana tipo=2)
+        val keyboardTopY = run {
+            val rect = Rect()
+            service.windows?.find { it.type == 2 }?.getBoundsInScreen(rect)
+            if (rect.top > 0) rect.top else (m.heightPixels * 0.62f).toInt()
+        }
+        val barBottomY = keyboardTopY + (m.heightPixels * 0.055f).toInt()
+        log(deviceId, "info", "Comentar: barra texto y=$keyboardTopY-$barBottomY")
 
-        if (posted) {
+        // Buscar cualquier nodo clickeable en la barra (a la derecha del texto, no-Cerrar)
+        val postNode = findClickableInBar(keyboardTopY, barBottomY, m.widthPixels / 2)
+        if (postNode != null) {
+            val rect = Rect()
+            postNode.getBoundsInScreen(rect)
+            val desc = postNode.contentDescription?.toString() ?: ""
+            val txt  = postNode.text?.toString() ?: ""
+            log(deviceId, "info", "Publicar: nodo encontrado desc='$desc' text='$txt' bounds=${rect.toShortString()}")
+            val clicked = postNode.performAction(AccessibilityNodeInfo.ACTION_CLICK)
+            if (!clicked) tapAt(rect.centerX().toFloat(), rect.centerY().toFloat())
+            postNode.recycle()
             log(deviceId, "info", "Comentario publicado ✓: \"$text\"")
             return
         }
 
-        // Método 2a: tecla Enter/Enviar del teclado Samsung (esquina inferior derecha del teclado)
-        // Debug: teclado y=1464-2227 (763px), fila inferior ~y=2036-2227, centro y≈2131 = 91%
-        // La tecla Enter/Publicar en Samsung keyboard está en x≈90%, y≈91%
-        log(deviceId, "info", "Comentar: tap tecla Enter/Publicar del teclado (90%,91%)...")
-        tapAt(m.widthPixels * 0.90f, m.heightPixels * 0.91f)
-        delay(800)
+        // Si no encontró nodo, loguear todos los clickeables de la barra para diagnóstico
+        log(deviceId, "warn", "Publicar: no se encontró botón — logueando barra...")
+        logBarNodes(keyboardTopY, barBottomY)
 
-        // Verificar si se publicó (el keyboard se cerraría)
-        val keyboardGone = service.windows?.none { it.type == 2 } ?: true
-        if (keyboardGone) {
-            log(deviceId, "info", "Comentario publicado ✓: \"$text\"")
-            return
-        }
-
-        // Método 2b: barra encima del teclado — Publicar a la derecha del campo de texto
-        log(deviceId, "info", "Comentar: tap barra de texto (88%,65%)...")
-        tapAt(m.widthPixels * 0.88f, m.heightPixels * 0.65f)
+        // Fallback: tap a la derecha de la barra (justo antes de Cerrar)
+        val tapX = m.widthPixels * 0.87f
+        val tapY = (keyboardTopY + barBottomY) / 2f
+        log(deviceId, "info", "Publicar: tap fallback x=${tapX.toInt()} y=${tapY.toInt()}")
+        tapAt(tapX, tapY)
         delay(600)
         log(deviceId, "info", "Comentario enviado: \"$text\"")
+    }
+
+    // Busca cualquier nodo clickeable en el rango y de la barra de comentarios,
+    // a la derecha de xMin, excluyendo el botón "Cerrar"
+    private fun findClickableInBar(yMin: Int, yMax: Int, xMin: Int): AccessibilityNodeInfo? {
+        val service = BotService.instance ?: return null
+        val windows = service.windows ?: return null
+        for (window in windows) {
+            val root = window.root ?: continue
+            val node = findClickableNodeInRegion(root, yMin, yMax, xMin)
+            if (node != null) { root.recycle(); return node }
+            root.recycle()
+        }
+        return null
+    }
+
+    private fun findClickableNodeInRegion(node: AccessibilityNodeInfo, yMin: Int, yMax: Int, xMin: Int): AccessibilityNodeInfo? {
+        if (node.isClickable) {
+            val rect = Rect()
+            node.getBoundsInScreen(rect)
+            val cy = rect.centerY()
+            val cx = rect.centerX()
+            if (cy in yMin..yMax && cx >= xMin) {
+                val desc = node.contentDescription?.toString()?.lowercase() ?: ""
+                val text = node.text?.toString()?.lowercase() ?: ""
+                if (!desc.contains("cerrar") && !text.contains("cerrar")) return node
+            }
+        }
+        for (i in 0 until node.childCount) {
+            val child = node.getChild(i) ?: continue
+            val found = findClickableNodeInRegion(child, yMin, yMax, xMin)
+            if (found != null) { if (found !== child) child.recycle(); return found }
+            child.recycle()
+        }
+        return null
+    }
+
+    // Logea todos los nodos (clickeables o no) en el rango de la barra para diagnóstico
+    private fun logBarNodes(yMin: Int, yMax: Int) {
+        val deviceId = DeviceId.get() ?: return
+        val service  = BotService.instance ?: return
+        val windows  = service.windows ?: return
+        var count = 0
+        for (window in windows) {
+            val root = window.root ?: continue
+            collectBarNodes(root, yMin - 20, yMax + 20, deviceId)
+            count++
+            root.recycle()
+        }
+        if (count == 0) log(deviceId, "warn", "logBarNodes: sin ventanas")
+    }
+
+    private fun collectBarNodes(node: AccessibilityNodeInfo, yMin: Int, yMax: Int, deviceId: String) {
+        val rect = Rect()
+        node.getBoundsInScreen(rect)
+        if (rect.centerY() in yMin..yMax) {
+            val desc  = node.contentDescription?.toString() ?: ""
+            val text  = node.text?.toString() ?: ""
+            val cls   = node.className?.toString()?.substringAfterLast('.') ?: ""
+            val click = if (node.isClickable) "✓" else " "
+            if (desc.isNotEmpty() || text.isNotEmpty()) {
+                try { SupabaseClient.addLog(deviceId, "info", "BAR[$click][$cls] ${rect.toShortString()} desc='$desc' text='$text'") } catch (_: Exception) {}
+            }
+        }
+        for (i in 0 until node.childCount) {
+            val child = node.getChild(i) ?: continue
+            collectBarNodes(child, yMin, yMax, deviceId)
+            child.recycle()
+        }
     }
 
     // Busca el primer EditText en el árbol (campo de texto genérico)
