@@ -72,10 +72,36 @@ object CommandExecutor {
     // ── Node search ───────────────────────────────────────────────────────────
 
     private fun openApp(packageName: String) {
-        val service = BotService.instance ?: return
-        val intent = service.packageManager.getLaunchIntentForPackage(packageName)
-            ?.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP) ?: return
-        service.startActivity(intent)
+        val deviceId = DeviceId.get() ?: return
+        val service  = BotService.instance ?: return
+        val pm       = service.packageManager
+
+        // Intento 1: launch intent estándar
+        val launch = pm.getLaunchIntentForPackage(packageName)
+        if (launch != null) {
+            launch.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
+            service.startActivity(launch)
+            return
+        }
+
+        // Intento 2: intent genérico por package (algunos TikTok tienen actividad diferente)
+        val fallback = pm.getLeanbackLaunchIntentForPackage(packageName)
+        if (fallback != null) {
+            fallback.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            service.startActivity(fallback)
+            return
+        }
+
+        // Intento 3: abrir desde Play Store / lista de apps
+        try {
+            val market = Intent(Intent.ACTION_VIEW).apply {
+                data = android.net.Uri.parse("package:$packageName")
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
+            service.startActivity(market)
+        } catch (_: Exception) {
+            log(deviceId, "error", "openApp: no se pudo abrir '$packageName' — ¿está instalado?")
+        }
     }
 
     private fun findNode(node: AccessibilityNodeInfo, query: String): AccessibilityNodeInfo? {
