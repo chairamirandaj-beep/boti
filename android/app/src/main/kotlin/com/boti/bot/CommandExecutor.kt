@@ -583,15 +583,17 @@ object CommandExecutor {
         inputNode.recycle()
         delay(1200)
 
-        // 4. Publicar — posición según si el teclado está abierto o no
+        // 4. Publicar — posición según si el teclado está abierto o no (coords calibrables)
         log(deviceId, "info", "Comentar: publicando...")
         val keyboardOpen = service.windows?.any { it.type == 2 } ?: false
         if (keyboardOpen) {
-            log(deviceId, "info", "Publicar con teclado: x=1000 y=1505")
-            tapAt(1000f, 1505f)
+            val (x, y) = CoordProfile.get("publish_kb", 1000f, 1505f)
+            log(deviceId, "info", "Publicar con teclado: ($x,$y)")
+            tapAt(x, y)
         } else {
-            log(deviceId, "info", "Publicar sin teclado: x=971 y=2237")
-            tapAt(971f, 2237f)
+            val (x, y) = CoordProfile.get("publish_nokb", 971f, 2237f)
+            log(deviceId, "info", "Publicar sin teclado: ($x,$y)")
+            tapAt(x, y)
         }
         delay(800)
         service.performGlobalAction(android.accessibilityservice.AccessibilityService.GLOBAL_ACTION_BACK)
@@ -855,8 +857,9 @@ object CommandExecutor {
         // Si no encontrado, tocar la barra del chat
         // DEBUG_ALL confirmó: barra en [28,2174][640,2296], centro x=200, y=2235
         if (inputNode == null) {
-            log(deviceId, "info", "Live comentar: tocando barra de chat (y=2235)...")
-            tapAt(200f, 2235f)
+            val (cbx, cby) = CoordProfile.get("live_chat", 200f, 2235f)
+            log(deviceId, "info", "Live comentar: tocando barra de chat ($cbx,$cby)...")
+            tapAt(cbx, cby)
             delay(1800)
             inputNode = service.rootInActiveWindow?.let { root ->
                 val n = findEditText(root); root.recycle(); n
@@ -890,10 +893,12 @@ object CommandExecutor {
         if (!sent) {
             if (keyboardOpen) {
                 // Con teclado: send arriba del teclado (mismo que comentarios normales)
-                tapAt(1000f, 1505f)
+                val (sx, sy) = CoordProfile.get("publish_kb", 1000f, 1505f)
+                tapAt(sx, sy)
             } else {
                 // Sin teclado: ImageView send dentro de la barra [556,2193][640,2277]
-                tapAt(598f, 2235f)
+                val (sx, sy) = CoordProfile.get("live_send", 598f, 2235f)
+                tapAt(sx, sy)
             }
         }
         delay(600)
@@ -917,8 +922,9 @@ object CommandExecutor {
 
         // 1. Abrir el panel si no está abierto (el saldo "Monedas" solo existe en el panel).
         if (!screenHas("monedas")) {
-            log(deviceId, "info", "Live regalo: abriendo panel (900,2246)...")
-            tapAt(900f, 2246f)
+            val (gix, giy) = CoordProfile.get("gift_icon", 900f, 2246f)
+            log(deviceId, "info", "Live regalo: abriendo panel ($gix,$giy)...")
+            tapAt(gix, giy)
             delay(2200)
         }
         // GUARDIA 2: confirmar panel abierto.

@@ -9,6 +9,15 @@ const LOG_COLOR: Record<string, string> = {
   error: 'text-red-400',
 }
 
+// Acciones que usan coordenada (calibrables por teléfono). def = valor por defecto.
+const CALIB: { key: string; label: string; def: [number, number] }[] = [
+  { key: 'gift_icon',    label: 'Ícono de regalo 🎁',               def: [900, 2246] },
+  { key: 'publish_nokb', label: 'Publicar comentario (sin teclado)', def: [971, 2237] },
+  { key: 'publish_kb',   label: 'Publicar/enviar (con teclado)',     def: [1000, 1505] },
+  { key: 'live_chat',    label: 'Barra de chat del live',           def: [200, 2235] },
+  { key: 'live_send',    label: 'Enviar chat live (sin teclado)',    def: [598, 2235] },
+]
+
 // Un teléfono se considera ACTIVO si reportó latido en los últimos 40s.
 const FRESH_MS = 40_000
 function deviceState(d: Device): 'paused' | 'online' | 'offline' {
@@ -91,6 +100,19 @@ export default function Home() {
       await supabase.from('devices').update({ name }).eq('id', d.id)
       fetchDevices()
     }
+  }
+
+  const saveCoord = async (d: Device, key: string, val: [number, number]) => {
+    const coords = { ...(d.coords ?? {}), [key]: val }
+    await supabase.from('devices').update({ coords }).eq('id', d.id)
+    fetchDevices()
+  }
+
+  const resetCoord = async (d: Device, key: string) => {
+    const coords = { ...(d.coords ?? {}) }
+    delete coords[key]
+    await supabase.from('devices').update({ coords }).eq('id', d.id)
+    fetchDevices()
   }
 
   const deleteDevice = async (d: Device) => {
@@ -263,6 +285,49 @@ export default function Home() {
           STOP
         </Btn>
       </div>
+
+      {/* ── Calibración (un teléfono) ── */}
+      {singleSel && (
+        <>
+          <div className="flex items-center justify-between mb-2">
+            <p className="text-xs text-gray-500 tracking-widest">CALIBRACIÓN</p>
+            <p className="text-xs text-gray-600">
+              {singleSel.name} · {singleSel.screen_w && singleSel.screen_h
+                ? `${singleSel.screen_w}×${singleSel.screen_h}` : 'resolución ?'}
+            </p>
+          </div>
+          <div className="bg-gray-900 rounded-xl border border-gray-800 p-3 mb-4 space-y-1.5">
+            <p className="text-[11px] text-gray-600 mb-1">
+              Activa &quot;ubicación del puntero&quot; en el teléfono, toca el elemento para ver su x,y y fíjalo aquí.
+            </p>
+            {CALIB.map(c => {
+              const cur = singleSel.coords?.[c.key]
+              const [x, y] = cur ?? c.def
+              return (
+                <div key={c.key} className="flex items-center gap-2 text-xs">
+                  <span className="flex-1 text-gray-300 truncate">{c.label}</span>
+                  <span className={`font-mono ${cur ? 'text-green-400' : 'text-gray-500'}`}>
+                    {x},{y}{cur ? '' : ' (def)'}
+                  </span>
+                  <button
+                    onClick={() => {
+                      const v = prompt(`${c.label}\nCoordenada x,y:`, `${x},${y}`)
+                      const m = v?.split(',').map(s => parseInt(s.trim(), 10))
+                      if (m && m.length === 2 && m.every(n => !isNaN(n))) saveCoord(singleSel, c.key, [m[0], m[1]])
+                    }}
+                    className="px-2 py-1 rounded-lg bg-gray-700 hover:bg-gray-600 text-gray-200">
+                    Fijar
+                  </button>
+                  {cur && (
+                    <button onClick={() => resetCoord(singleSel, c.key)}
+                      className="px-1 text-gray-500 hover:text-gray-300" title="Volver al default">↺</button>
+                  )}
+                </div>
+              )
+            })}
+          </div>
+        </>
+      )}
 
       {/* Logs */}
       <div className="bg-gray-900 rounded-xl border border-gray-800 overflow-hidden">

@@ -37,6 +37,30 @@ object SupabaseClient {
         http.newCall(req).execute().close()
     }
 
+    // Reporta la resolución de pantalla del teléfono (para calibrar coords desde la web).
+    fun reportResolution(deviceId: String, w: Int, h: Int) {
+        val body = JSONObject().apply { put("screen_w", w); put("screen_h", h) }.toString()
+        val req = Request.Builder()
+            .url("$BASE_URL/rest/v1/devices?id=eq.$deviceId")
+            .withAuth()
+            .patch(body.toRequestBody(JSON_TYPE))
+            .build()
+        http.newCall(req).execute().close()
+    }
+
+    // Lee el perfil de coordenadas calibradas del teléfono: {"gift_icon":[900,2246],...}
+    fun getCoords(deviceId: String): JSONObject? {
+        val req = Request.Builder()
+            .url("$BASE_URL/rest/v1/devices?id=eq.$deviceId&select=coords")
+            .withAuth()
+            .build()
+        val response = http.newCall(req).execute()
+        val body = response.body?.string() ?: return null
+        val arr = JSONArray(body)
+        if (arr.length() == 0) return null
+        return arr.getJSONObject(0).optJSONObject("coords")
+    }
+
     fun updateDeviceStatus(deviceId: String, status: String) {
         val body = JSONObject().apply {
             put("status", status)

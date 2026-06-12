@@ -28,7 +28,13 @@ class BotService : AccessibilityService() {
         }
 
         scope.launch {
-            runCatching { SupabaseClient.updateDeviceStatus(DeviceId.get()!!, "online") }
+            runCatching {
+                val id = DeviceId.get()!!
+                SupabaseClient.updateDeviceStatus(id, "online")
+                val m = resources.displayMetrics
+                SupabaseClient.reportResolution(id, m.widthPixels, m.heightPixels)
+                CoordProfile.refresh()
+            }
         }
 
         CommandListener.start()

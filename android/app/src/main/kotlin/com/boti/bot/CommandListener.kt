@@ -50,6 +50,8 @@ object CommandListener {
                         SupabaseClient.markCommand(cmdId, "executing")
                         SupabaseClient.addLog(id, "info", "Ejecutando: $action")
 
+                        // Refrescar coords calibradas de este teléfono antes de ejecutar
+                        CoordProfile.refresh()
                         CommandExecutor.execute(action, payload)
 
                         SupabaseClient.markCommand(cmdId, "done")

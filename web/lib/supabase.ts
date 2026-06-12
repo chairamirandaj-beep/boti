@@ -15,6 +15,9 @@ export interface Device {
   battery: number | null
   connected: boolean
   tiktok_accounts: string[] | null
+  coords: Record<string, [number, number]> | null
+  screen_w: number | null
+  screen_h: number | null
 }
 
 export interface Command {
