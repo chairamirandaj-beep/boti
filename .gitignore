@@ -24,3 +24,6 @@ build/
 android/local.properties
 android/*.jks
 android/app/release/
+android/.gradle/
+android/app/build/
+android/build/
