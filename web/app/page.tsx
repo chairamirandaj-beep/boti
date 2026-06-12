@@ -300,6 +300,12 @@ export default function Home() {
             <p className="text-[11px] text-gray-600 mb-1">
               Activa &quot;ubicación del puntero&quot; en el teléfono, toca el elemento para ver su x,y y fíjalo aquí.
             </p>
+            <button
+              onClick={() => sendCommand('DEBUG_COORDS')}
+              disabled={off}
+              className="w-full text-xs text-gray-400 hover:text-gray-200 disabled:opacity-40 py-1 mb-1 border border-gray-700 rounded-lg transition">
+              🔎 Ver coords cargadas en el teléfono (logs)
+            </button>
             {CALIB.map(c => {
               const cur = singleSel.coords?.[c.key]
               const [x, y] = cur ?? c.def

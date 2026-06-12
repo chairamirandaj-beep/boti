@@ -36,6 +36,7 @@ object CommandExecutor {
             "WHATSAPP_TAB"          -> whatsappTab(payload ?: "Novedades")
             "DEBUG_NODES"           -> debugNodes()
             "DEBUG_ALL"             -> debugAll()
+            "DEBUG_COORDS"          -> debugCoords()
         }
     }
 
@@ -1134,6 +1135,19 @@ object CommandExecutor {
             val child = node.getChild(i) ?: continue
             collectAllClickable(child, deviceId)
             child.recycle()
+        }
+    }
+
+    // Muestra el perfil de coordenadas calibradas que el teléfono tiene cargado.
+    private fun debugCoords() {
+        val deviceId = DeviceId.get() ?: return
+        val service  = BotService.instance
+        val m = service?.resources?.displayMetrics
+        log(deviceId, "info", "Resolución: ${m?.widthPixels}x${m?.heightPixels}")
+        listOf("gift_icon", "publish_kb", "publish_nokb", "live_chat", "live_send").forEach { k ->
+            val (x, y) = CoordProfile.get(k, -1f, -1f)
+            val estado = if (x < 0) "sin calibrar (usa default)" else "calibrado"
+            log(deviceId, "info", "coord $k = ($x,$y) — $estado")
         }
     }
 
