@@ -93,6 +93,17 @@ export default function Home() {
     }
   }
 
+  const deleteDevice = async (d: Device) => {
+    if (!confirm(`¿Eliminar "${d.name}"? Se borrarán también sus logs y comandos.`)) return
+    // Borrar referencias primero (FK), luego el teléfono.
+    await supabase.from('logs').delete().eq('device_id', d.id)
+    await supabase.from('commands').delete().eq('device_id', d.id)
+    await supabase.from('devices').delete().eq('id', d.id)
+    setSelected(s => s.filter(x => x !== d.id))
+    fetchDevices()
+    fetchLogs()
+  }
+
   const toggle = (id: string) =>
     setSelected(s => s.includes(id) ? s.filter(x => x !== id) : [...s, id])
   const selectAll    = () => setSelected(devices.map(d => d.id))
@@ -140,6 +151,8 @@ export default function Home() {
               <span className={`text-[10px] font-bold ${STATE_TEXT[st]}`}>{STATE_LABEL[st]}</span>
               <button onClick={(e) => { e.stopPropagation(); renameDevice(d) }}
                 className="text-gray-600 hover:text-gray-300 text-xs px-1">✎</button>
+              <button onClick={(e) => { e.stopPropagation(); deleteDevice(d) }}
+                className="text-gray-600 hover:text-red-400 text-xs px-1">🗑</button>
             </div>
           )
         })}
