@@ -25,6 +25,9 @@ object CommandListener {
                 // Espera trigger de Realtime O timeout de 10s (polling de respaldo)
                 withTimeoutOrNull(10_000) { trigger.receive() }
 
+                // Latido: avisa que el teléfono sigue vivo (cada ~10s o al recibir comando)
+                runCatching { SupabaseClient.heartbeat(id) }
+
                 // Si está pausado, no procesar comandos
                 if (BotService.instance?.isListening != true) continue
 

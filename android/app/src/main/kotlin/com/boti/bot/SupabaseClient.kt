@@ -90,6 +90,17 @@ object SupabaseClient {
         http.newCall(req).execute().close()
     }
 
+    // Latido: actualiza last_seen para que el panel sepa que el teléfono sigue vivo.
+    fun heartbeat(deviceId: String) {
+        val body = JSONObject().apply { put("last_seen", Instant.now().toString()) }.toString()
+        val req = Request.Builder()
+            .url("$BASE_URL/rest/v1/devices?id=eq.$deviceId")
+            .withAuth()
+            .patch(body.toRequestBody(JSON_TYPE))
+            .build()
+        http.newCall(req).execute().close()
+    }
+
     fun updateTiktokAccounts(deviceId: String, accounts: List<String>) {
         val arr = JSONArray().also { accounts.forEach(it::put) }
         val body = JSONObject().apply { put("tiktok_accounts", arr) }.toString()
