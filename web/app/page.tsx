@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { supabase, Device, Log } from '@/lib/supabase'
+import { supabase, Device, Log, Command } from '@/lib/supabase'
 
 const LOG_COLOR: Record<string, string> = {
   info:  'text-gray-300',
@@ -54,16 +54,19 @@ export default function Home() {
   const [fromLive, setFromLive] = useState(false)
   const [phrases, setPhrases]   = useState<{ id: string; text: string }[]>([])
   const [newPhrase, setNewPhrase] = useState('')
+  const [queue, setQueue]       = useState<Command[]>([])
   const [, setNow]              = useState(Date.now())
 
   useEffect(() => {
     fetchDevices()
     fetchLogs()
     fetchPhrases()
+    fetchQueue()
     const channel = supabase
       .channel('realtime-panel')
       .on('postgres_changes', { event: '*',      schema: 'public', table: 'devices' }, () => fetchDevices())
       .on('postgres_changes', { event: '*',      schema: 'public', table: 'phrases' }, () => fetchPhrases())
+      .on('postgres_changes', { event: '*',      schema: 'public', table: 'commands' }, () => fetchQueue())
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'logs'    }, (p) => {
         setLogs(prev => [p.new as Log, ...prev].slice(0, 80))
       })
@@ -83,6 +86,16 @@ export default function Home() {
     setNewPhrase(''); fetchPhrases()
   }
   const delPhrase = async (id: string) => { await supabase.from('phrases').delete().eq('id', id); fetchPhrases() }
+
+  const fetchQueue = async () => {
+    const { data } = await supabase.from('commands').select('*')
+      .in('status', ['pending', 'executing']).order('created_at', { ascending: true }).limit(100)
+    if (data) setQueue(data as Command[])
+  }
+  const cancelQueue = async (ids: string[]) => {
+    await supabase.from('commands').update({ status: 'cancelled' }).in('device_id', ids).eq('status', 'pending')
+    fetchQueue()
+  }
 
   const fetchDevices = async () => {
     const { data } = await supabase.from('devices').select('*').order('name', { ascending: true })
@@ -206,6 +219,7 @@ export default function Home() {
             <p className="text-gray-600 text-xs p-2">Sin teléfonos. Instala la app en un teléfono y aparecerá aquí.</p>
           ) : devices.map(d => {
             const st = deviceState(d)
+            const qn = queue.filter(c => c.device_id === d.id).length
             return (
               <div key={d.id}
                 onClick={() => setActiveId(d.id)}
@@ -218,6 +232,7 @@ export default function Home() {
                     {' · '}{d.screen_w && d.screen_h ? `${d.screen_w}×${d.screen_h}` : 'res ?'}
                   </p>
                 </div>
+                {qn > 0 && <span className="text-[10px] font-bold bg-blue-900 text-blue-300 rounded-full px-2 py-0.5">{qn}</span>}
                 <span className={`text-[10px] font-bold ${STATE_TEXT[st]}`}>{STATE_LABEL[st]}</span>
                 <button onClick={(e) => { e.stopPropagation(); renameDevice(d) }}
                   className="text-gray-600 hover:text-gray-300 text-sm px-1">✎</button>
@@ -281,6 +296,31 @@ export default function Home() {
         </div>
         {active && <span className={`text-[10px] font-bold ${STATE_TEXT[st]}`}>{STATE_LABEL[st]}</span>}
       </div>
+
+      {/* Cola de comandos */}
+      {(() => {
+        const q = queue.filter(c => targets.includes(c.device_id ?? ''))
+        if (q.length === 0) return null
+        return (
+          <div className="bg-gray-900 rounded-xl border border-gray-800 p-3 mb-4">
+            <div className="flex items-center justify-between mb-1">
+              <p className="text-xs text-gray-500 tracking-widest">COLA ({q.length})</p>
+              <button onClick={() => cancelQueue(targets)} className="text-[11px] text-gray-400 hover:text-red-400">✕ Cancelar pendientes</button>
+            </div>
+            <div className="space-y-0.5 max-h-32 overflow-y-auto">
+              {q.slice(0, 30).map(c => (
+                <div key={c.id} className="flex items-center gap-2 text-[11px]">
+                  <span className={c.status === 'executing' ? 'text-blue-400 animate-pulse' : 'text-yellow-500'}>
+                    {c.status === 'executing' ? '▶' : '⏳'}
+                  </span>
+                  <span className="flex-1 text-gray-400 truncate">{c.action}{c.payload ? ` · ${c.payload.slice(0, 30)}` : ''}</span>
+                  {activeId === 'ALL' && <span className="text-gray-600">{deviceName(c.device_id)}</span>}
+                </div>
+              ))}
+            </div>
+          </div>
+        )
+      })()}
 
       {/* ── TikTok ── */}
       <p className="text-xs text-gray-500 mb-2 tracking-widest">TIKTOK</p>
