@@ -52,14 +52,18 @@ export default function Home() {
   const [sending, setSending]   = useState(false)
   const [liveLink, setLiveLink] = useState('')
   const [fromLive, setFromLive] = useState(false)
+  const [phrases, setPhrases]   = useState<{ id: string; text: string }[]>([])
+  const [newPhrase, setNewPhrase] = useState('')
   const [, setNow]              = useState(Date.now())
 
   useEffect(() => {
     fetchDevices()
     fetchLogs()
+    fetchPhrases()
     const channel = supabase
       .channel('realtime-panel')
       .on('postgres_changes', { event: '*',      schema: 'public', table: 'devices' }, () => fetchDevices())
+      .on('postgres_changes', { event: '*',      schema: 'public', table: 'phrases' }, () => fetchPhrases())
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'logs'    }, (p) => {
         setLogs(prev => [p.new as Log, ...prev].slice(0, 80))
       })
@@ -67,6 +71,18 @@ export default function Home() {
     const tick = setInterval(() => setNow(Date.now()), 10_000)
     return () => { supabase.removeChannel(channel); clearInterval(tick) }
   }, [])
+
+  const fetchPhrases = async () => {
+    const { data } = await supabase.from('phrases').select('id,text').order('created_at', { ascending: true })
+    if (data) setPhrases(data)
+  }
+  const addPhrase = async () => {
+    const t = newPhrase.trim()
+    if (!t) return
+    await supabase.from('phrases').insert({ text: t })
+    setNewPhrase(''); fetchPhrases()
+  }
+  const delPhrase = async (id: string) => { await supabase.from('phrases').delete().eq('id', id); fetchPhrases() }
 
   const fetchDevices = async () => {
     const { data } = await supabase.from('devices').select('*').order('name', { ascending: true })
@@ -113,6 +129,18 @@ export default function Home() {
   const resetCoord = async (d: Device, key: string) => {
     const coords = { ...(d.coords ?? {}) }; delete coords[key]
     await supabase.from('devices').update({ coords }).eq('id', d.id); fetchDevices()
+  }
+
+  // Envía un comentario aleatorio: a cada teléfono una frase distinta de la lista.
+  const sendRandomComment = async (action: string) => {
+    if (targets.length === 0) return
+    if (phrases.length === 0) { alert('Agrega frases primero (sección FRASES).'); return }
+    const pick = () => phrases[Math.floor(Math.random() * phrases.length)].text
+    setSending(true)
+    await supabase.from('commands').insert(
+      targets.map(id => ({ device_id: id, action, payload: pick(), status: 'pending' }))
+    )
+    setSending(false)
   }
 
   const ask = (label: string) => { const v = prompt(label); return v?.trim() || null }
@@ -165,6 +193,31 @@ export default function Home() {
               </div>
             )
           })}
+        </div>
+
+        {/* Frases para comentarios aleatorios */}
+        <p className="text-xs text-gray-500 mb-2 tracking-widest">FRASES ({phrases.length})</p>
+        <div className="bg-gray-900 rounded-xl border border-gray-800 p-3 mb-4">
+          <div className="flex gap-2 mb-2">
+            <input type="text" value={newPhrase} onChange={(e) => setNewPhrase(e.target.value)}
+              onKeyDown={(e) => { if (e.key === 'Enter') addPhrase() }}
+              placeholder="Nueva frase para comentar..."
+              className="flex-1 bg-gray-950 border border-gray-800 rounded-xl px-3 py-2 text-xs text-gray-200 placeholder-gray-600 focus:outline-none focus:border-gray-600" />
+            <button onClick={addPhrase} disabled={!newPhrase.trim()}
+              className="px-3 py-2 rounded-xl text-xs font-semibold bg-emerald-700 hover:bg-emerald-600 disabled:opacity-40">+ Agregar</button>
+          </div>
+          {phrases.length === 0 ? (
+            <p className="text-gray-600 text-xs">Sin frases. Agrega varias para comentarios aleatorios (anti-detección).</p>
+          ) : (
+            <div className="space-y-1 max-h-40 overflow-y-auto">
+              {phrases.map(p => (
+                <div key={p.id} className="flex items-center gap-2 text-xs">
+                  <span className="flex-1 text-gray-300 truncate">{p.text}</span>
+                  <button onClick={() => delPhrase(p.id)} className="text-gray-600 hover:text-red-400">🗑</button>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
 
         <LogsBox logs={logs} deviceName={deviceName} />
@@ -250,9 +303,13 @@ export default function Home() {
         <Btn onClick={() => { if (liveLink.trim()) sendCommand('TIKTOK_OPEN_LIVE', liveLink.trim()) }}
           disabled={off || !liveLink.trim()} color="bg-emerald-700 hover:bg-emerald-600">Abrir Live 📺</Btn>
       </div>
-      <div className="grid grid-cols-2 gap-2 mb-4">
+      <div className="grid grid-cols-2 gap-2 mb-2">
         <Btn onClick={() => { const t = ask('Comentario para el live:'); if (t) sendCommand('TIKTOK_LIVE_COMMENT', t) }}
           disabled={off} color="bg-rose-700 hover:bg-rose-600">Chat Live 🔴</Btn>
+        <Btn onClick={() => sendRandomComment('TIKTOK_LIVE_COMMENT')}
+          disabled={off || phrases.length === 0} color="bg-rose-800 hover:bg-rose-700">Chat 🎲 aleatorio</Btn>
+      </div>
+      <div className="grid grid-cols-1 gap-2 mb-4">
         <Btn onClick={() => { const g = ask('Nombre del regalo (ej: Rosa) — vacío = ver lista:'); sendCommand('TIKTOK_LIVE_GIFT', g ?? undefined) }}
           disabled={off} color="bg-fuchsia-700 hover:bg-fuchsia-600">Regalo 🎁</Btn>
       </div>

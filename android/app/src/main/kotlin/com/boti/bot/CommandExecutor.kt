@@ -81,6 +81,11 @@ object CommandExecutor {
         )
     }
 
+    // Espera un tiempo aleatorio dentro del rango (anti-detección: ritmo humano).
+    private suspend fun humanDelay(minMs: Int, maxMs: Int) {
+        delay((minMs..maxMs).random().toLong())
+    }
+
     private fun tapNodeCenter(node: AccessibilityNodeInfo): Boolean {
         val rect = Rect()
         node.getBoundsInScreen(rect)
