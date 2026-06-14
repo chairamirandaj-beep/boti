@@ -17,6 +17,25 @@ object CommandListener {
         RealtimeClient.connect(deviceId)
 
         if (job?.isActive == true) return
+
+        // Vigilante de STOP: detecta un STOP pendiente aunque el loop principal esté
+        // ocupado en un comando largo (loop/rotación), y lo interrumpe.
+        scope.launch {
+            val id = DeviceId.get() ?: return@launch
+            while (isActive) {
+                delay(2000)
+                runCatching {
+                    val pending = SupabaseClient.getPendingCommand(id) ?: return@runCatching
+                    if (pending.getString("action").uppercase() == "STOP") {
+                        stopCurrent = true
+                        SupabaseClient.markCommand(pending.getString("id"), "done")
+                        SupabaseClient.cancelPendingCommands(id)
+                        SupabaseClient.addLog(id, "info", "STOP: interrumpiendo acción en curso")
+                    }
+                }
+            }
+        }
+
         job = scope.launch {
             val id = DeviceId.get() ?: return@launch
             SupabaseClient.addLog(id, "info", "Bot iniciado (Realtime activo)")

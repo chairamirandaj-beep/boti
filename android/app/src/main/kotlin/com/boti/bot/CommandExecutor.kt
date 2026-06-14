@@ -38,6 +38,7 @@ object CommandExecutor {
             "TIKTOK_AUTO_LIVE"      -> tiktokAutoLive(payload ?: return)
             "TIKTOK_RAID"           -> tiktokRaid(payload ?: return)
             "TIKTOK_ROTATE"         -> tiktokRotate(payload ?: return)
+            "TIKTOK_LOOP"           -> tiktokLoop(payload ?: return)
             "WHATSAPP_TAB"          -> whatsappTab(payload ?: "Novedades")
             "DEBUG_NODES"           -> debugNodes()
             "DEBUG_ALL"             -> debugAll()
@@ -1090,6 +1091,39 @@ object CommandExecutor {
             humanDelay(2000, 4000)
         }
         log(deviceId, "info", "🔁 Rotación completada ✓")
+    }
+
+    // Loop: repite una acción `count` veces cada `interval` segundos (con jitter).
+    // Si la acción es un comentario y se pasan `comments`, elige una al azar cada vez.
+    // payload JSON: {"action":"...","payload":"...","comments":[...],"count":10,"interval":30}
+    private suspend fun tiktokLoop(payload: String) {
+        val deviceId = DeviceId.get() ?: return
+        val json = try { JSONObject(payload) } catch (e: Exception) {
+            log(deviceId, "error", "Loop: payload inválido"); return
+        }
+        val action   = json.optString("action").uppercase()
+        val inner    = json.optString("payload", null)
+        val comments = json.optJSONArray("comments")?.let { a -> List(a.length()) { a.getString(it) } } ?: emptyList()
+        val count    = json.optInt("count", 5).coerceIn(1, 500)
+        val interval = json.optInt("interval", 30).coerceIn(3, 3600)
+
+        if (action.isEmpty()) { log(deviceId, "warn", "Loop: sin acción"); return }
+        log(deviceId, "info", "⏱️ Loop: $action x$count cada ${interval}s")
+
+        for (i in 1..count) {
+            if (CommandListener.stopCurrent) { log(deviceId, "warn", "Loop detenido en $i/$count"); return }
+            log(deviceId, "info", "⏱️ $i/$count")
+
+            val p = if (action.contains("COMMENT") && comments.isNotEmpty()) comments.random() else inner
+            execute(action, p)
+
+            if (i < count) {
+                // intervalo con jitter ±25%
+                val jitter = (interval * 250)
+                humanDelay(interval * 1000 - jitter, interval * 1000 + jitter)
+            }
+        }
+        log(deviceId, "info", "⏱️ Loop completado ✓")
     }
 
     // Raid: abrir un live y comentar (sin cambiar de cuenta). Para acciones grupales.

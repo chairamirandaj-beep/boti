@@ -159,6 +159,24 @@ export default function Home() {
     setSending(false)
   }
 
+  // Loop de comentarios en el live: repite N veces cada X segundos (frases al azar).
+  const sendLoopComment = async () => {
+    if (targets.length === 0) return
+    const count = parseInt(prompt('¿Cuántos comentarios en total?', '10') || '', 10)
+    if (!count || count < 1) return
+    const interval = parseInt(prompt('¿Cada cuántos segundos?', '30') || '', 10)
+    if (!interval || interval < 3) return
+    const comments = phrases.length ? phrases.map(p => p.text) : [prompt('Comentario:', 'hola')?.trim() || 'hola']
+    setSending(true)
+    await supabase.from('commands').insert(
+      targets.map(id => ({
+        device_id: id, action: 'TIKTOK_LOOP',
+        payload: JSON.stringify({ action: 'TIKTOK_LIVE_COMMENT', comments, count, interval }), status: 'pending',
+      }))
+    )
+    setSending(false)
+  }
+
   const ask = (label: string) => { const v = prompt(label); return v?.trim() || null }
   const off = sending || targets.length === 0
   const deviceName = (id: string | null) => devices.find(d => d.id === id)?.name ?? '—'
@@ -321,6 +339,9 @@ export default function Home() {
       </div>
       <Btn onClick={sendRaid} disabled={off || !liveLink.trim()} color="bg-orange-700 hover:bg-orange-600 w-full mb-2">
         🚀 Raid: abrir live + comentar {activeId === 'ALL' ? `(${targets.length} tel.)` : ''}
+      </Btn>
+      <Btn onClick={sendLoopComment} disabled={off} color="bg-teal-700 hover:bg-teal-600 w-full mb-4">
+        ⏱️ Comentar en bucle (cada X seg)
       </Btn>
       <div className="grid grid-cols-2 gap-2 mb-2">
         <Btn onClick={() => { const t = ask('Comentario para el live:'); if (t) sendCommand('TIKTOK_LIVE_COMMENT', t) }}
