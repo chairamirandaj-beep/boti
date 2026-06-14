@@ -251,6 +251,31 @@ export default function Home() {
           disabled={off} color="bg-fuchsia-700 hover:bg-fuchsia-600">Regalo 🎁</Btn>
       </div>
 
+      {/* ── Automatizaciones (solo teléfono individual) ── */}
+      {active && (
+        <>
+          <p className="text-xs text-gray-500 mb-2 tracking-widest">AUTOMATIZACIONES</p>
+          <div className="bg-gray-900 rounded-xl border border-gray-800 p-3 mb-4">
+            <button
+              onClick={() => {
+                if (!liveLink.trim()) { alert('Primero pega el link del live arriba (sección TIKTOK LIVE).'); return }
+                const accts = active.tiktok_accounts ?? []
+                const account = prompt(`Cuenta a usar:${accts.length ? `\nDisponibles: ${accts.join(', ')}` : ''}`, accts[0] ?? '')?.trim()
+                if (!account) return
+                const comment = prompt('Comentario para el live:', 'hola')?.trim() || 'hola'
+                sendCommand('TIKTOK_AUTO_LIVE', JSON.stringify({ account, link: liveLink.trim(), comment }))
+              }}
+              disabled={off}
+              className="w-full px-4 py-3 rounded-xl text-sm font-semibold bg-violet-700 hover:bg-violet-600 disabled:opacity-40 transition active:scale-95">
+              🤖 Cambiar cuenta → Abrir live → Comentar
+            </button>
+            <p className="text-[11px] text-gray-600 mt-2">
+              Usa el link de la sección TIKTOK LIVE. Te pedirá la cuenta y el comentario (por defecto &quot;hola&quot;).
+            </p>
+          </div>
+        </>
+      )}
+
       {/* ── Control ── */}
       <p className="text-xs text-gray-500 mb-2 tracking-widest">CONTROL</p>
       <div className="grid grid-cols-3 gap-2 mb-4">

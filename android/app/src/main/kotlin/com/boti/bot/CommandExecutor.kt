@@ -12,6 +12,7 @@ import android.os.Bundle
 import android.view.accessibility.AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE
 import android.view.accessibility.AccessibilityNodeInfo
 import kotlinx.coroutines.delay
+import org.json.JSONObject
 
 object CommandExecutor {
 
@@ -33,6 +34,7 @@ object CommandExecutor {
             "TIKTOK_LIVE_COMMENT"   -> tiktokLiveComment(payload ?: return)
             "TIKTOK_LIVE_FOLLOW"    -> tiktokLiveFollow()
             "TIKTOK_LIVE_GIFT"      -> tiktokLiveGift(payload)
+            "TIKTOK_AUTO_LIVE"      -> tiktokAutoLive(payload ?: return)
             "WHATSAPP_TAB"          -> whatsappTab(payload ?: "Novedades")
             "DEBUG_NODES"           -> debugNodes()
             "DEBUG_ALL"             -> debugAll()
@@ -990,6 +992,45 @@ object CommandExecutor {
         log(deviceId, if (ok) "info" else "warn",
             if (ok) "Regalo '$name' enviado ✓ (saldo $coinsBefore→$coinsAfter)"
             else "Regalo '$name': saldo sin cambio ($coinsAfter) — quizá no se envió")
+    }
+
+    // Automatización encadenada desde un live:
+    //   1) cambiar de cuenta (back al "Para ti" + proceso de cambio)
+    //   2) abrir un enlace de live
+    //   3) comentar en ese live
+    // payload JSON: {"account":"...","link":"...","comment":"hola"}
+    private suspend fun tiktokAutoLive(payload: String) {
+        val deviceId = DeviceId.get() ?: return
+        val json = try { JSONObject(payload) } catch (e: Exception) {
+            log(deviceId, "error", "Automatización: payload inválido"); return
+        }
+        val account = json.optString("account").trim()
+        val link    = json.optString("link").trim()
+        val comment = json.optString("comment", "hola").ifBlank { "hola" }
+
+        log(deviceId, "info", "▶ Automatización: cuenta='$account' → abrir live → comentar '$comment'")
+
+        // 1. Cambiar cuenta partiendo del live (hace back y el proceso de cambio)
+        if (account.isNotEmpty()) {
+            log(deviceId, "info", "Auto 1/3: cambiando a '$account'...")
+            tiktokLiveSwitchAccount(account)
+            delay(2500)
+        }
+
+        // 2. Abrir el enlace del live (el intent ya espera ~5s internamente)
+        if (link.isNotEmpty()) {
+            log(deviceId, "info", "Auto 2/3: abriendo live...")
+            tiktokOpenLive(link)
+            delay(2000)
+        } else {
+            log(deviceId, "warn", "Auto: sin link de live — no puedo continuar"); return
+        }
+
+        // 3. Comentar en el live
+        log(deviceId, "info", "Auto 3/3: comentando '$comment'...")
+        tiktokLiveComment(comment)
+
+        log(deviceId, "info", "✓ Automatización completada")
     }
 
     // Busca el primer nodo cuyo viewIdResourceName termine en `idSuffix` y lo clickea.
