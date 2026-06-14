@@ -40,6 +40,7 @@ object CommandExecutor {
             "TIKTOK_RAID"           -> tiktokRaid(payload ?: return)
             "TIKTOK_ROTATE"         -> tiktokRotate(payload ?: return)
             "TIKTOK_LOOP"           -> tiktokLoop(payload ?: return)
+            "TIKTOK_SEQUENCE"       -> tiktokSequence(payload ?: return)
             "WHATSAPP_TAB"          -> whatsappTab(payload ?: "Novedades")
             "DEBUG_NODES"           -> debugNodes()
             "DEBUG_ALL"             -> debugAll()
@@ -1138,6 +1139,28 @@ object CommandExecutor {
             humanDelay(2000, 4000)
         }
         log(deviceId, "info", "🔁 Rotación completada ✓")
+    }
+
+    // Secuencia personalizada: ejecuta una lista de pasos en orden.
+    // payload = JSON array: [{"action":"...","payload":"...","wait":3}, ...]  (wait en segundos)
+    private suspend fun tiktokSequence(payload: String) {
+        val deviceId = DeviceId.get() ?: return
+        val steps = try { JSONArray(payload) } catch (e: Exception) {
+            log(deviceId, "error", "Secuencia: payload inválido"); return
+        }
+        log(deviceId, "info", "🧩 Secuencia: ${steps.length()} pasos")
+        for (i in 0 until steps.length()) {
+            if (CommandListener.stopCurrent) { log(deviceId, "warn", "Secuencia detenida en paso ${i + 1}"); return }
+            val step   = steps.getJSONObject(i)
+            val action = step.optString("action").uppercase()
+            val p      = step.optString("payload", null)?.ifBlank { null }
+            val wait   = step.optInt("wait", 0)
+            if (action.isEmpty()) continue
+            log(deviceId, "info", "🧩 Paso ${i + 1}/${steps.length()}: $action")
+            execute(action, p)
+            if (wait > 0) humanDelay(wait * 1000 - 300, wait * 1000 + 300)
+        }
+        log(deviceId, "info", "🧩 Secuencia completada ✓")
     }
 
     // Loop: repite una acción `count` veces cada `interval` segundos (con jitter).

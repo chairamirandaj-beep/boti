@@ -17,6 +17,22 @@ const CALIB: { key: string; label: string; def: [number, number] }[] = [
   { key: 'live_send_kb', label: 'Enviar chat (con teclado)',    def: [1000, 1505] },
 ]
 
+type Step = { action: string; payload?: string; wait?: number }
+type Sequence = { id: string; name: string; steps: Step[] }
+
+// Acciones disponibles para el constructor de secuencias (label + si pide payload)
+const SEQ_ACTIONS: { value: string; label: string; hint?: string }[] = [
+  { value: 'TIKTOK_OPEN_LIVE',          label: 'Abrir live',            hint: 'link del live' },
+  { value: 'TIKTOK_LIVE_COMMENT',       label: 'Comentar en live',      hint: 'texto' },
+  { value: 'TIKTOK_LIVE_GIFT',          label: 'Enviar regalo',         hint: 'nombre del regalo' },
+  { value: 'TIKTOK_SWITCH_ACCOUNT',     label: 'Cambiar cuenta',        hint: 'cuenta' },
+  { value: 'TIKTOK_LIVE_SWITCH_ACCOUNT',label: 'Cambiar cuenta (live)', hint: 'cuenta' },
+  { value: 'TIKTOK_LIKE',               label: 'Like' },
+  { value: 'TIKTOK_OPEN',               label: 'Abrir TikTok' },
+  { value: 'SCROLL',                    label: 'Scroll' },
+  { value: 'WAIT',                      label: 'Esperar', hint: 'milisegundos' },
+]
+
 const FRESH_MS = 40_000
 function deviceState(d: Device): 'paused' | 'online' | 'offline' {
   if (d.status === 'paused') return 'paused'
@@ -56,6 +72,12 @@ export default function Home() {
   const [newPhrase, setNewPhrase] = useState('')
   const [queue, setQueue]       = useState<Command[]>([])
   const [statLogs, setStatLogs] = useState<{ device_id: string | null; message: string }[]>([])
+  const [sequences, setSequences] = useState<Sequence[]>([])
+  const [seqName, setSeqName]   = useState('')
+  const [seqSteps, setSeqSteps] = useState<Step[]>([])
+  const [stAction, setStAction] = useState(SEQ_ACTIONS[0].value)
+  const [stPayload, setStPayload] = useState('')
+  const [stWait, setStWait]     = useState('3')
   const [, setNow]              = useState(Date.now())
 
   useEffect(() => {
@@ -64,10 +86,12 @@ export default function Home() {
     fetchPhrases()
     fetchQueue()
     fetchStats()
+    fetchSequences()
     const channel = supabase
       .channel('realtime-panel')
       .on('postgres_changes', { event: '*',      schema: 'public', table: 'devices' }, () => fetchDevices())
       .on('postgres_changes', { event: '*',      schema: 'public', table: 'phrases' }, () => fetchPhrases())
+      .on('postgres_changes', { event: '*',      schema: 'public', table: 'sequences' }, () => fetchSequences())
       .on('postgres_changes', { event: '*',      schema: 'public', table: 'commands' }, () => fetchQueue())
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'logs'    }, (p) => {
         setLogs(prev => [p.new as Log, ...prev].slice(0, 80))
@@ -210,6 +234,33 @@ export default function Home() {
     setSending(false)
   }
 
+  // ── Secuencias ──
+  const fetchSequences = async () => {
+    const { data } = await supabase.from('sequences').select('*').order('created_at', { ascending: true })
+    if (data) setSequences(data as Sequence[])
+  }
+  const addStep = () => {
+    const a = SEQ_ACTIONS.find(x => x.value === stAction)!
+    const step: Step = { action: stAction }
+    if (a.hint && stPayload.trim()) step.payload = stPayload.trim()
+    const w = parseInt(stWait, 10); if (!isNaN(w) && w > 0) step.wait = w
+    setSeqSteps(s => [...s, step]); setStPayload('')
+  }
+  const saveSequence = async () => {
+    if (!seqName.trim() || seqSteps.length === 0) { alert('Ponle nombre y al menos un paso.'); return }
+    await supabase.from('sequences').insert({ name: seqName.trim(), steps: seqSteps })
+    setSeqName(''); setSeqSteps([]); fetchSequences()
+  }
+  const delSequence = async (id: string) => { await supabase.from('sequences').delete().eq('id', id); fetchSequences() }
+  const runSequence = async (seq: Sequence) => {
+    if (targets.length === 0) return
+    setSending(true)
+    await supabase.from('commands').insert(
+      targets.map(id => ({ device_id: id, action: 'TIKTOK_SEQUENCE', payload: JSON.stringify(seq.steps), status: 'pending' }))
+    )
+    setSending(false)
+  }
+
   const ask = (label: string) => { const v = prompt(label); return v?.trim() || null }
   const off = sending || targets.length === 0
   const deviceName = (id: string | null) => devices.find(d => d.id === id)?.name ?? '—'
@@ -290,6 +341,56 @@ export default function Home() {
               ))}
             </div>
           )}
+        </div>
+
+        {/* Constructor de secuencias */}
+        <p className="text-xs text-gray-500 mb-2 tracking-widest">SECUENCIAS ({sequences.length})</p>
+        <div className="bg-gray-900 rounded-xl border border-gray-800 p-3 mb-4">
+          {/* lista de secuencias guardadas */}
+          {sequences.length > 0 && (
+            <div className="space-y-1 mb-3">
+              {sequences.map(s => (
+                <div key={s.id} className="flex items-center gap-2 text-xs bg-gray-950 rounded-lg px-2 py-1.5">
+                  <span className="flex-1 text-gray-300 truncate">🧩 {s.name} <span className="text-gray-600">({s.steps.length} pasos)</span></span>
+                  <button onClick={() => delSequence(s.id)} className="text-gray-600 hover:text-red-400">🗑</button>
+                </div>
+              ))}
+              <p className="text-[11px] text-gray-600">Para ejecutar una secuencia, entra al panel de un teléfono.</p>
+            </div>
+          )}
+
+          {/* builder */}
+          <p className="text-[11px] text-gray-500 mb-1">Nueva secuencia</p>
+          <input type="text" value={seqName} onChange={e => setSeqName(e.target.value)} placeholder="Nombre de la secuencia"
+            className="w-full bg-gray-950 border border-gray-800 rounded-lg px-2 py-1.5 text-xs text-gray-200 placeholder-gray-600 mb-2 focus:outline-none focus:border-gray-600" />
+          {seqSteps.length > 0 && (
+            <div className="space-y-1 mb-2">
+              {seqSteps.map((st, i) => (
+                <div key={i} className="flex items-center gap-2 text-[11px] text-gray-400">
+                  <span className="text-gray-600">{i + 1}.</span>
+                  <span className="flex-1 truncate">{SEQ_ACTIONS.find(a => a.value === st.action)?.label ?? st.action}{st.payload ? `: ${st.payload}` : ''}{st.wait ? ` (esperar ${st.wait}s)` : ''}</span>
+                  <button onClick={() => setSeqSteps(s => s.filter((_, j) => j !== i))} className="text-gray-600 hover:text-red-400">✕</button>
+                </div>
+              ))}
+            </div>
+          )}
+          <div className="flex gap-1 mb-2">
+            <select value={stAction} onChange={e => setStAction(e.target.value)}
+              className="bg-gray-950 border border-gray-800 rounded-lg px-1 py-1.5 text-[11px] text-gray-200">
+              {SEQ_ACTIONS.map(a => <option key={a.value} value={a.value}>{a.label}</option>)}
+            </select>
+            <input type="text" value={stPayload} onChange={e => setStPayload(e.target.value)}
+              placeholder={SEQ_ACTIONS.find(a => a.value === stAction)?.hint ?? 'sin dato'}
+              disabled={!SEQ_ACTIONS.find(a => a.value === stAction)?.hint}
+              className="flex-1 min-w-0 bg-gray-950 border border-gray-800 rounded-lg px-2 py-1.5 text-[11px] text-gray-200 placeholder-gray-600 disabled:opacity-40" />
+            <input type="number" value={stWait} onChange={e => setStWait(e.target.value)} title="esperar (seg)"
+              className="w-12 bg-gray-950 border border-gray-800 rounded-lg px-1 py-1.5 text-[11px] text-gray-200" />
+            <button onClick={addStep} className="px-2 py-1.5 rounded-lg text-[11px] bg-gray-700 hover:bg-gray-600">+ paso</button>
+          </div>
+          <button onClick={saveSequence} disabled={!seqName.trim() || seqSteps.length === 0}
+            className="w-full py-1.5 rounded-lg text-xs font-semibold bg-emerald-700 hover:bg-emerald-600 disabled:opacity-40">
+            💾 Guardar secuencia
+          </button>
         </div>
 
         <LogsBox logs={logs} deviceName={deviceName} />
@@ -462,6 +563,21 @@ export default function Home() {
             <p className="text-[11px] text-gray-600 mt-2">
               Usan el link de TIKTOK LIVE. El comentario usa tus FRASES al azar (o &quot;hola&quot;).
             </p>
+          </div>
+        </>
+      )}
+
+      {/* Secuencias guardadas (ejecutar) */}
+      {sequences.length > 0 && (
+        <>
+          <p className="text-xs text-gray-500 mb-2 tracking-widest">SECUENCIAS</p>
+          <div className="bg-gray-900 rounded-xl border border-gray-800 p-3 mb-4 space-y-2">
+            {sequences.map(s => (
+              <button key={s.id} onClick={() => runSequence(s)} disabled={off}
+                className="w-full px-4 py-2.5 rounded-xl text-sm font-semibold bg-sky-800 hover:bg-sky-700 disabled:opacity-40 transition active:scale-95 text-left">
+                🧩 {s.name} <span className="text-sky-300 text-xs">({s.steps.length} pasos)</span>
+              </button>
+            ))}
           </div>
         </>
       )}
