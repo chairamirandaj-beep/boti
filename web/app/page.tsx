@@ -387,10 +387,16 @@ export default function Home() {
             ) : (
               <p className="text-gray-600 text-xs mb-2">Sin cuentas — toca Sincronizar</p>
             )}
-            <button onClick={() => sendCommand('TIKTOK_GET_ACCOUNTS')} disabled={off}
-              className="w-full text-xs text-gray-400 hover:text-gray-200 disabled:opacity-40 py-1.5 border border-gray-700 rounded-lg transition">
-              ↺ Sincronizar cuentas del teléfono
-            </button>
+            <div className="grid grid-cols-2 gap-2">
+              <button onClick={() => sendCommand('TIKTOK_GET_ACCOUNTS')} disabled={off}
+                className="text-xs text-gray-400 hover:text-gray-200 disabled:opacity-40 py-1.5 border border-gray-700 rounded-lg transition">
+                ↺ Sincronizar cuentas
+              </button>
+              <button onClick={() => sendCommand('TIKTOK_CHECK_ACCOUNT')} disabled={off}
+                className="text-xs text-gray-400 hover:text-gray-200 disabled:opacity-40 py-1.5 border border-gray-700 rounded-lg transition">
+                🔄 Verificar cuenta real
+              </button>
+            </div>
           </div>
         </>
       )}

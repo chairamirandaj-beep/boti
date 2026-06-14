@@ -32,6 +32,7 @@ object CommandExecutor {
             "TIKTOK_SWITCH_ACCOUNT" -> tiktokSwitchAccount(payload ?: return)
             "TIKTOK_LIVE_SWITCH_ACCOUNT" -> tiktokLiveSwitchAccount(payload ?: return)
             "TIKTOK_GET_ACCOUNTS"   -> tiktokGetAccounts()
+            "TIKTOK_CHECK_ACCOUNT"  -> tiktokCheckAccount()
             "TIKTOK_LIVE_COMMENT"   -> tiktokLiveComment(payload ?: return)
             "TIKTOK_LIVE_FOLLOW"    -> tiktokLiveFollow()
             "TIKTOK_LIVE_GIFT"      -> tiktokLiveGift(payload)
@@ -707,6 +708,52 @@ object CommandExecutor {
                 return found
             }
             child.recycle()
+        }
+        return null
+    }
+
+    // Auto-verificación: lee el @usuario real desde el perfil y guarda la cuenta actual.
+    private suspend fun tiktokCheckAccount() {
+        val deviceId = DeviceId.get() ?: return
+        val service  = BotService.instance ?: return
+        val m        = service.resources.displayMetrics
+
+        log(deviceId, "info", "Verificando cuenta real (perfil)...")
+        val perfil = findAndClickInAllWindows("perfil", excludeContaining = "perfil de")
+        if (!perfil) tapAt(m.widthPixels * 0.90f, m.heightPixels * 0.935f)
+        delay(1800)
+
+        val handle = findHandle()
+        if (handle != null) {
+            runCatching { SupabaseClient.setCurrentAccount(deviceId, handle) }
+            log(deviceId, "info", "Cuenta real: @$handle ✓")
+        } else {
+            log(deviceId, "warn", "No pude leer el @usuario en el perfil")
+        }
+    }
+
+    private fun findHandle(): String? {
+        val service = BotService.instance ?: return null
+        val windows = service.windows ?: return null
+        for (w in windows) {
+            val root = w.root ?: continue
+            val h = searchHandle(root)
+            root.recycle()
+            if (h != null) return h
+        }
+        return null
+    }
+
+    private fun searchHandle(node: AccessibilityNodeInfo): String? {
+        val text = node.text?.toString()?.trim() ?: ""
+        if (text.startsWith("@") && text.length in 2..30 && !text.contains(" ")) {
+            return text.removePrefix("@")
+        }
+        for (i in 0 until node.childCount) {
+            val child = node.getChild(i) ?: continue
+            val h = searchHandle(child)
+            child.recycle()
+            if (h != null) return h
         }
         return null
     }
