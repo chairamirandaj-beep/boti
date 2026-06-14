@@ -887,22 +887,33 @@ object CommandExecutor {
             if (!typed) { inputNode.recycle(); log(deviceId, "warn", "Live comentar: no pudo escribir"); return }
         }
         inputNode.recycle()
-        delay(1200)
+        delay(1000)
 
-        // 3. Enviar
+        // 3. Enviar — método 1: IME_ENTER (tecla enviar del teclado), sin coordenada.
         log(deviceId, "info", "Live comentar: enviando...")
-        val keyboardOpen = service.windows?.any { it.type == 2 } ?: false
-        val sent = findAndClickInAllWindows("enviar") || findAndClickInAllWindows("send")
+        var sent = false
+        val edit = service.rootInActiveWindow?.let { root ->
+            val n = findEditText(root); root.recycle(); n
+        }
+        if (edit != null) {
+            sent = edit.performAction(AccessibilityNodeInfo.AccessibilityAction.ACTION_IME_ENTER.id)
+            edit.recycle()
+            if (sent) log(deviceId, "info", "Live comentar: enviado con teclado (IME)")
+        }
+
+        // Método 2: botón Enviar/Send por accesibilidad
         if (!sent) {
-            if (keyboardOpen) {
-                // Con teclado: send arriba del teclado (calibrable, solo live)
-                val (sx, sy) = CoordProfile.get("live_send_kb", 1000f, 1505f)
-                tapAt(sx, sy)
-            } else {
-                // Sin teclado: ImageView send dentro de la barra [556,2193][640,2277]
-                val (sx, sy) = CoordProfile.get("live_send", 598f, 2235f)
-                tapAt(sx, sy)
-            }
+            sent = findAndClickInAllWindows("enviar") || findAndClickInAllWindows("send")
+            if (sent) log(deviceId, "info", "Live comentar: enviado (botón)")
+        }
+
+        // Método 3: coordenada calibrable (último recurso)
+        if (!sent) {
+            val keyboardOpen = service.windows?.any { it.type == 2 } ?: false
+            val (sx, sy) = if (keyboardOpen) CoordProfile.get("live_send_kb", 1000f, 1505f)
+                           else CoordProfile.get("live_send", 598f, 2235f)
+            log(deviceId, "info", "Live comentar: enviando por coord ($sx,$sy) teclado=$keyboardOpen")
+            tapAt(sx, sy)
         }
         delay(600)
         // No salir del live — el usuario sigue viendo el stream
