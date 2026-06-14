@@ -35,6 +35,7 @@ object CommandExecutor {
             "TIKTOK_LIVE_FOLLOW"    -> tiktokLiveFollow()
             "TIKTOK_LIVE_GIFT"      -> tiktokLiveGift(payload)
             "TIKTOK_AUTO_LIVE"      -> tiktokAutoLive(payload ?: return)
+            "TIKTOK_RAID"           -> tiktokRaid(payload ?: return)
             "WHATSAPP_TAB"          -> whatsappTab(payload ?: "Novedades")
             "DEBUG_NODES"           -> debugNodes()
             "DEBUG_ALL"             -> debugAll()
@@ -1048,6 +1049,24 @@ object CommandExecutor {
         tiktokLiveComment(comment)
 
         log(deviceId, "info", "✓ Automatización completada")
+    }
+
+    // Raid: abrir un live y comentar (sin cambiar de cuenta). Para acciones grupales.
+    // payload JSON: {"link":"...","comment":"..."}
+    private suspend fun tiktokRaid(payload: String) {
+        val deviceId = DeviceId.get() ?: return
+        val json = try { JSONObject(payload) } catch (e: Exception) {
+            log(deviceId, "error", "Raid: payload inválido"); return
+        }
+        val link    = json.optString("link").trim()
+        val comment = json.optString("comment", "hola").ifBlank { "hola" }
+        if (link.isEmpty()) { log(deviceId, "warn", "Raid: sin link"); return }
+
+        log(deviceId, "info", "🚀 Raid: abrir live → comentar '$comment'")
+        tiktokOpenLive(link)
+        humanDelay(1500, 3500)   // ritmo humano
+        tiktokLiveComment(comment)
+        log(deviceId, "info", "🚀 Raid completado")
     }
 
     // Busca el primer nodo cuyo viewIdResourceName termine en `idSuffix` y lo clickea.

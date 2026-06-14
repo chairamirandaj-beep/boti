@@ -143,6 +143,22 @@ export default function Home() {
     setSending(false)
   }
 
+  // Raid: a cada teléfono manda abrir el live + comentar (frase aleatoria si hay frases).
+  const sendRaid = async () => {
+    if (targets.length === 0) return
+    if (!liveLink.trim()) { alert('Pega el link del live primero.'); return }
+    const fixed = phrases.length === 0 ? (prompt('Comentario del raid:', 'hola')?.trim() || 'hola') : null
+    const pick = () => phrases.length ? phrases[Math.floor(Math.random() * phrases.length)].text : fixed!
+    setSending(true)
+    await supabase.from('commands').insert(
+      targets.map(id => ({
+        device_id: id, action: 'TIKTOK_RAID',
+        payload: JSON.stringify({ link: liveLink.trim(), comment: pick() }), status: 'pending',
+      }))
+    )
+    setSending(false)
+  }
+
   const ask = (label: string) => { const v = prompt(label); return v?.trim() || null }
   const off = sending || targets.length === 0
   const deviceName = (id: string | null) => devices.find(d => d.id === id)?.name ?? '—'
@@ -303,6 +319,9 @@ export default function Home() {
         <Btn onClick={() => { if (liveLink.trim()) sendCommand('TIKTOK_OPEN_LIVE', liveLink.trim()) }}
           disabled={off || !liveLink.trim()} color="bg-emerald-700 hover:bg-emerald-600">Abrir Live 📺</Btn>
       </div>
+      <Btn onClick={sendRaid} disabled={off || !liveLink.trim()} color="bg-orange-700 hover:bg-orange-600 w-full mb-2">
+        🚀 Raid: abrir live + comentar {activeId === 'ALL' ? `(${targets.length} tel.)` : ''}
+      </Btn>
       <div className="grid grid-cols-2 gap-2 mb-2">
         <Btn onClick={() => { const t = ask('Comentario para el live:'); if (t) sendCommand('TIKTOK_LIVE_COMMENT', t) }}
           disabled={off} color="bg-rose-700 hover:bg-rose-600">Chat Live 🔴</Btn>
