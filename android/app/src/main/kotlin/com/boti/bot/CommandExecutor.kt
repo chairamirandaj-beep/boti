@@ -13,6 +13,7 @@ import android.view.accessibility.AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT
 import android.view.accessibility.AccessibilityNodeInfo
 import kotlinx.coroutines.delay
 import org.json.JSONObject
+import org.json.JSONArray
 
 object CommandExecutor {
 
@@ -36,6 +37,7 @@ object CommandExecutor {
             "TIKTOK_LIVE_GIFT"      -> tiktokLiveGift(payload)
             "TIKTOK_AUTO_LIVE"      -> tiktokAutoLive(payload ?: return)
             "TIKTOK_RAID"           -> tiktokRaid(payload ?: return)
+            "TIKTOK_ROTATE"         -> tiktokRotate(payload ?: return)
             "WHATSAPP_TAB"          -> whatsappTab(payload ?: "Novedades")
             "DEBUG_NODES"           -> debugNodes()
             "DEBUG_ALL"             -> debugAll()
@@ -1049,6 +1051,45 @@ object CommandExecutor {
         tiktokLiveComment(comment)
 
         log(deviceId, "info", "✓ Automatización completada")
+    }
+
+    // Rotación de cuentas: por cada cuenta → cambiar cuenta → abrir live → comentar
+    // (frase aleatoria) → (opcional) regalar. Para multiplicar presencia con un teléfono.
+    // payload JSON: {"accounts":[...],"link":"...","comments":[...],"gift":"..."}
+    private suspend fun tiktokRotate(payload: String) {
+        val deviceId = DeviceId.get() ?: return
+        val json = try { JSONObject(payload) } catch (e: Exception) {
+            log(deviceId, "error", "Rotación: payload inválido"); return
+        }
+        val accounts = json.optJSONArray("accounts")?.let { a -> List(a.length()) { a.getString(it) } } ?: emptyList()
+        val link     = json.optString("link").trim()
+        val comments = json.optJSONArray("comments")?.let { a -> List(a.length()) { a.getString(it) } } ?: emptyList()
+        val gift     = json.optString("gift").trim()
+
+        if (accounts.isEmpty()) { log(deviceId, "warn", "Rotación: sin cuentas"); return }
+        if (link.isEmpty())     { log(deviceId, "warn", "Rotación: sin link de live"); return }
+
+        log(deviceId, "info", "🔁 Rotación: ${accounts.size} cuentas")
+        accounts.forEachIndexed { i, account ->
+            if (CommandListener.stopCurrent) { log(deviceId, "warn", "Rotación detenida"); return }
+            log(deviceId, "info", "🔁 ${i + 1}/${accounts.size}: cuenta '$account'")
+
+            tiktokLiveSwitchAccount(account)
+            humanDelay(1500, 3000)
+
+            tiktokOpenLive(link)
+            humanDelay(1500, 3500)
+
+            val comment = if (comments.isNotEmpty()) comments.random() else "hola"
+            tiktokLiveComment(comment)
+
+            if (gift.isNotEmpty()) {
+                humanDelay(1500, 3000)
+                tiktokLiveGift(gift)
+            }
+            humanDelay(2000, 4000)
+        }
+        log(deviceId, "info", "🔁 Rotación completada ✓")
     }
 
     // Raid: abrir un live y comentar (sin cambiar de cuenta). Para acciones grupales.

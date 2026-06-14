@@ -351,8 +351,22 @@ export default function Home() {
               className="w-full px-4 py-3 rounded-xl text-sm font-semibold bg-violet-700 hover:bg-violet-600 disabled:opacity-40 transition active:scale-95">
               🤖 Cambiar cuenta → Abrir live → Comentar
             </button>
+            <button
+              onClick={() => {
+                if (!liveLink.trim()) { alert('Primero pega el link del live arriba.'); return }
+                const accts = active.tiktok_accounts ?? []
+                if (accts.length === 0) { alert('Este teléfono no tiene cuentas. Sincroniza primero.'); return }
+                if (!confirm(`Rotar por ${accts.length} cuentas en el live?\n${accts.join(', ')}`)) return
+                const comments = phrases.length ? phrases.map(p => p.text) : [prompt('Comentario:', 'hola')?.trim() || 'hola']
+                const gift = prompt('Regalo en cada cuenta (opcional, vacío = ninguno):', '')?.trim() || ''
+                sendCommand('TIKTOK_ROTATE', JSON.stringify({ accounts: accts, link: liveLink.trim(), comments, gift }))
+              }}
+              disabled={off}
+              className="w-full mt-2 px-4 py-3 rounded-xl text-sm font-semibold bg-amber-700 hover:bg-amber-600 disabled:opacity-40 transition active:scale-95">
+              🔁 Rotar todas las cuentas (live + comentar)
+            </button>
             <p className="text-[11px] text-gray-600 mt-2">
-              Usa el link de la sección TIKTOK LIVE. Te pedirá la cuenta y el comentario (por defecto &quot;hola&quot;).
+              Usan el link de TIKTOK LIVE. El comentario usa tus FRASES al azar (o &quot;hola&quot;).
             </p>
           </div>
         </>
