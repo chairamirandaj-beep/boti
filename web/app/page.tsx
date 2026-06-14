@@ -239,12 +239,22 @@ export default function Home() {
     const { data } = await supabase.from('sequences').select('*').order('created_at', { ascending: true })
     if (data) setSequences(data as Sequence[])
   }
+  // Al cambiar de acción, prepara el valor por defecto del dato del paso.
+  const changeAction = (v: string) => {
+    setStAction(v)
+    setStPayload(v === 'TIKTOK_LIVE_COMMENT' ? '__RANDOM__' : '')
+  }
   const addStep = () => {
-    const a = SEQ_ACTIONS.find(x => x.value === stAction)!
     const step: Step = { action: stAction }
-    if (a.hint && stPayload.trim()) step.payload = stPayload.trim()
+    if (stPayload.trim()) step.payload = stPayload.trim()
     const w = parseInt(stWait, 10); if (!isNaN(w) && w > 0) step.wait = w
-    setSeqSteps(s => [...s, step]); setStPayload('')
+    setSeqSteps(s => [...s, step])
+    setStPayload(stAction === 'TIKTOK_LIVE_COMMENT' ? '__RANDOM__' : '')
+  }
+  const stepLabel = (st: Step) => {
+    const base = SEQ_ACTIONS.find(a => a.value === st.action)?.label ?? st.action
+    const val = st.payload === '__RANDOM__' ? '(aleatorio)' : st.payload
+    return base + (val ? `: ${val}` : '') + (st.wait ? ` · esperar ${st.wait}s` : '')
   }
   const saveSequence = async () => {
     if (!seqName.trim() || seqSteps.length === 0) { alert('Ponle nombre y al menos un paso.'); return }
@@ -254,12 +264,20 @@ export default function Home() {
   const delSequence = async (id: string) => { await supabase.from('sequences').delete().eq('id', id); fetchSequences() }
   const runSequence = async (seq: Sequence) => {
     if (targets.length === 0) return
+    const pick = () => phrases.length ? phrases[Math.floor(Math.random() * phrases.length)].text : 'hola'
     setSending(true)
-    await supabase.from('commands').insert(
-      targets.map(id => ({ device_id: id, action: 'TIKTOK_SEQUENCE', payload: JSON.stringify(seq.steps), status: 'pending' }))
-    )
+    // Por cada teléfono, los pasos de comentario "aleatorio" se rellenan con una frase distinta.
+    const rows = targets.map(id => {
+      const steps = seq.steps.map(st =>
+        st.action === 'TIKTOK_LIVE_COMMENT' && st.payload === '__RANDOM__' ? { ...st, payload: pick() } : st
+      )
+      return { device_id: id, action: 'TIKTOK_SEQUENCE', payload: JSON.stringify(steps), status: 'pending' }
+    })
+    await supabase.from('commands').insert(rows)
     setSending(false)
   }
+
+  const allAccounts = Array.from(new Set(devices.flatMap(d => d.tiktok_accounts ?? [])))
 
   const ask = (label: string) => { const v = prompt(label); return v?.trim() || null }
   const off = sending || targets.length === 0
@@ -343,53 +361,78 @@ export default function Home() {
           )}
         </div>
 
-        {/* Constructor de secuencias */}
-        <p className="text-xs text-gray-500 mb-2 tracking-widest">SECUENCIAS ({sequences.length})</p>
+        {/* Crear automatización (constructor) */}
+        <p className="text-xs text-gray-500 mb-2 tracking-widest">CREAR AUTOMATIZACIÓN</p>
         <div className="bg-gray-900 rounded-xl border border-gray-800 p-3 mb-4">
-          {/* lista de secuencias guardadas */}
+          {/* automatizaciones guardadas */}
           {sequences.length > 0 && (
             <div className="space-y-1 mb-3">
               {sequences.map(s => (
                 <div key={s.id} className="flex items-center gap-2 text-xs bg-gray-950 rounded-lg px-2 py-1.5">
-                  <span className="flex-1 text-gray-300 truncate">🧩 {s.name} <span className="text-gray-600">({s.steps.length} pasos)</span></span>
+                  <span className="flex-1 text-gray-300 truncate">🤖 {s.name} <span className="text-gray-600">({s.steps.length} pasos)</span></span>
                   <button onClick={() => delSequence(s.id)} className="text-gray-600 hover:text-red-400">🗑</button>
                 </div>
               ))}
-              <p className="text-[11px] text-gray-600">Para ejecutar una secuencia, entra al panel de un teléfono.</p>
+              <p className="text-[11px] text-gray-600">Para ejecutarlas, entra al panel de un teléfono o al grupal.</p>
             </div>
           )}
 
           {/* builder */}
-          <p className="text-[11px] text-gray-500 mb-1">Nueva secuencia</p>
-          <input type="text" value={seqName} onChange={e => setSeqName(e.target.value)} placeholder="Nombre de la secuencia"
+          <p className="text-[11px] text-gray-500 mb-1">Nueva automatización</p>
+          <input type="text" value={seqName} onChange={e => setSeqName(e.target.value)} placeholder="Nombre (ej: Entrar y comentar)"
             className="w-full bg-gray-950 border border-gray-800 rounded-lg px-2 py-1.5 text-xs text-gray-200 placeholder-gray-600 mb-2 focus:outline-none focus:border-gray-600" />
+
+          {/* pasos agregados */}
           {seqSteps.length > 0 && (
             <div className="space-y-1 mb-2">
               {seqSteps.map((st, i) => (
-                <div key={i} className="flex items-center gap-2 text-[11px] text-gray-400">
+                <div key={i} className="flex items-center gap-2 text-[11px] text-gray-400 bg-gray-950 rounded-lg px-2 py-1">
                   <span className="text-gray-600">{i + 1}.</span>
-                  <span className="flex-1 truncate">{SEQ_ACTIONS.find(a => a.value === st.action)?.label ?? st.action}{st.payload ? `: ${st.payload}` : ''}{st.wait ? ` (esperar ${st.wait}s)` : ''}</span>
+                  <span className="flex-1 truncate">{stepLabel(st)}</span>
                   <button onClick={() => setSeqSteps(s => s.filter((_, j) => j !== i))} className="text-gray-600 hover:text-red-400">✕</button>
                 </div>
               ))}
             </div>
           )}
-          <div className="flex gap-1 mb-2">
-            <select value={stAction} onChange={e => setStAction(e.target.value)}
-              className="bg-gray-950 border border-gray-800 rounded-lg px-1 py-1.5 text-[11px] text-gray-200">
+
+          {/* agregar paso */}
+          <div className="space-y-1 mb-2">
+            <select value={stAction} onChange={e => changeAction(e.target.value)}
+              className="w-full bg-gray-950 border border-gray-800 rounded-lg px-2 py-1.5 text-xs text-gray-200">
               {SEQ_ACTIONS.map(a => <option key={a.value} value={a.value}>{a.label}</option>)}
             </select>
-            <input type="text" value={stPayload} onChange={e => setStPayload(e.target.value)}
-              placeholder={SEQ_ACTIONS.find(a => a.value === stAction)?.hint ?? 'sin dato'}
-              disabled={!SEQ_ACTIONS.find(a => a.value === stAction)?.hint}
-              className="flex-1 min-w-0 bg-gray-950 border border-gray-800 rounded-lg px-2 py-1.5 text-[11px] text-gray-200 placeholder-gray-600 disabled:opacity-40" />
-            <input type="number" value={stWait} onChange={e => setStWait(e.target.value)} title="esperar (seg)"
-              className="w-12 bg-gray-950 border border-gray-800 rounded-lg px-1 py-1.5 text-[11px] text-gray-200" />
-            <button onClick={addStep} className="px-2 py-1.5 rounded-lg text-[11px] bg-gray-700 hover:bg-gray-600">+ paso</button>
+
+            {/* dato del paso según la acción */}
+            {(stAction === 'TIKTOK_SWITCH_ACCOUNT' || stAction === 'TIKTOK_LIVE_SWITCH_ACCOUNT') ? (
+              <select value={stPayload} onChange={e => setStPayload(e.target.value)}
+                className="w-full bg-gray-950 border border-gray-800 rounded-lg px-2 py-1.5 text-xs text-gray-200">
+                <option value="">— elige cuenta —</option>
+                {allAccounts.map(a => <option key={a} value={a}>{a}</option>)}
+              </select>
+            ) : stAction === 'TIKTOK_LIVE_COMMENT' ? (
+              <select value={stPayload} onChange={e => setStPayload(e.target.value)}
+                className="w-full bg-gray-950 border border-gray-800 rounded-lg px-2 py-1.5 text-xs text-gray-200">
+                <option value="__RANDOM__">🎲 Frase aleatoria</option>
+                {phrases.map(p => <option key={p.id} value={p.text}>{p.text}</option>)}
+              </select>
+            ) : SEQ_ACTIONS.find(a => a.value === stAction)?.hint ? (
+              <input type="text" value={stPayload} onChange={e => setStPayload(e.target.value)}
+                placeholder={SEQ_ACTIONS.find(a => a.value === stAction)?.hint}
+                className="w-full bg-gray-950 border border-gray-800 rounded-lg px-2 py-1.5 text-xs text-gray-200 placeholder-gray-600" />
+            ) : null}
+
+            <div className="flex gap-1 items-center">
+              <span className="text-[11px] text-gray-500">esperar después</span>
+              <input type="number" value={stWait} onChange={e => setStWait(e.target.value)}
+                className="w-14 bg-gray-950 border border-gray-800 rounded-lg px-1 py-1.5 text-[11px] text-gray-200" />
+              <span className="text-[11px] text-gray-500">seg</span>
+              <button onClick={addStep} className="ml-auto px-3 py-1.5 rounded-lg text-xs bg-gray-700 hover:bg-gray-600">+ paso</button>
+            </div>
           </div>
+
           <button onClick={saveSequence} disabled={!seqName.trim() || seqSteps.length === 0}
-            className="w-full py-1.5 rounded-lg text-xs font-semibold bg-emerald-700 hover:bg-emerald-600 disabled:opacity-40">
-            💾 Guardar secuencia
+            className="w-full py-2 rounded-lg text-xs font-semibold bg-emerald-700 hover:bg-emerald-600 disabled:opacity-40">
+            💾 Guardar automatización
           </button>
         </div>
 
@@ -567,15 +610,15 @@ export default function Home() {
         </>
       )}
 
-      {/* Secuencias guardadas (ejecutar) */}
+      {/* Mis automatizaciones guardadas (ejecutar) */}
       {sequences.length > 0 && (
         <>
-          <p className="text-xs text-gray-500 mb-2 tracking-widest">SECUENCIAS</p>
+          <p className="text-xs text-gray-500 mb-2 tracking-widest">MIS AUTOMATIZACIONES</p>
           <div className="bg-gray-900 rounded-xl border border-gray-800 p-3 mb-4 space-y-2">
             {sequences.map(s => (
               <button key={s.id} onClick={() => runSequence(s)} disabled={off}
                 className="w-full px-4 py-2.5 rounded-xl text-sm font-semibold bg-sky-800 hover:bg-sky-700 disabled:opacity-40 transition active:scale-95 text-left">
-                🧩 {s.name} <span className="text-sky-300 text-xs">({s.steps.length} pasos)</span>
+                🤖 {s.name} <span className="text-sky-300 text-xs">({s.steps.length} pasos)</span>
               </button>
             ))}
           </div>
