@@ -893,8 +893,8 @@ object CommandExecutor {
         val sent = findAndClickInAllWindows("enviar") || findAndClickInAllWindows("send")
         if (!sent) {
             if (keyboardOpen) {
-                // Con teclado: send arriba del teclado (mismo que comentarios normales)
-                val (sx, sy) = CoordProfile.get("publish_kb", 1000f, 1505f)
+                // Con teclado: send arriba del teclado (calibrable, solo live)
+                val (sx, sy) = CoordProfile.get("live_send_kb", 1000f, 1505f)
                 tapAt(sx, sy)
             } else {
                 // Sin teclado: ImageView send dentro de la barra [556,2193][640,2277]

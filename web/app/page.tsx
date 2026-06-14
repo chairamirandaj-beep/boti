@@ -9,16 +9,14 @@ const LOG_COLOR: Record<string, string> = {
   error: 'text-red-400',
 }
 
-// Acciones que usan coordenada (calibrables por teléfono). def = valor por defecto.
+// Acciones de LIVE que usan coordenada (calibrables por teléfono). def = valor por defecto.
 const CALIB: { key: string; label: string; def: [number, number] }[] = [
-  { key: 'gift_icon',    label: 'Ícono de regalo 🎁',               def: [900, 2246] },
-  { key: 'publish_nokb', label: 'Publicar comentario (sin teclado)', def: [971, 2237] },
-  { key: 'publish_kb',   label: 'Publicar/enviar (con teclado)',     def: [1000, 1505] },
-  { key: 'live_chat',    label: 'Barra de chat del live',           def: [200, 2235] },
-  { key: 'live_send',    label: 'Enviar chat live (sin teclado)',    def: [598, 2235] },
+  { key: 'gift_icon',    label: 'Ícono de regalo 🎁',           def: [900, 2246] },
+  { key: 'live_chat',    label: 'Barra de chat del live',       def: [200, 2235] },
+  { key: 'live_send',    label: 'Enviar chat (sin teclado)',    def: [598, 2235] },
+  { key: 'live_send_kb', label: 'Enviar chat (con teclado)',    def: [1000, 1505] },
 ]
 
-// Un teléfono se considera ACTIVO si reportó latido en los últimos 40s.
 const FRESH_MS = 40_000
 function deviceState(d: Device): 'paused' | 'online' | 'offline' {
   if (d.status === 'paused') return 'paused'
@@ -49,17 +47,16 @@ function Btn({ onClick, disabled, color, span, children }: {
 
 export default function Home() {
   const [devices, setDevices]   = useState<Device[]>([])
-  const [selected, setSelected] = useState<string[]>([])
+  const [activeId, setActiveId] = useState<string | null>(null)  // id de teléfono, 'ALL' o null (lista)
   const [logs, setLogs]         = useState<Log[]>([])
   const [sending, setSending]   = useState(false)
   const [liveLink, setLiveLink] = useState('')
   const [fromLive, setFromLive] = useState(false)
-  const [now, setNow]           = useState(Date.now())
+  const [, setNow]              = useState(Date.now())
 
   useEffect(() => {
     fetchDevices()
     fetchLogs()
-
     const channel = supabase
       .channel('realtime-panel')
       .on('postgres_changes', { event: '*',      schema: 'public', table: 'devices' }, () => fetchDevices())
@@ -67,8 +64,6 @@ export default function Home() {
         setLogs(prev => [p.new as Log, ...prev].slice(0, 80))
       })
       .subscribe()
-
-    // Recalcular "activo/desconectado" cada 10s (los latidos llegan cada ~10s)
     const tick = setInterval(() => setNow(Date.now()), 10_000)
     return () => { supabase.removeChannel(channel); clearInterval(tick) }
   }, [])
@@ -77,257 +72,219 @@ export default function Home() {
     const { data } = await supabase.from('devices').select('*').order('name', { ascending: true })
     if (data) setDevices(data as Device[])
   }
-
   const fetchLogs = async () => {
     const { data } = await supabase.from('logs').select('*')
       .order('created_at', { ascending: false }).limit(80)
     if (data) setLogs(data)
   }
 
+  // Destinos según el panel abierto
+  const targets: string[] =
+    activeId === 'ALL' ? devices.filter(d => deviceState(d) === 'online').map(d => d.id)
+    : activeId ? [activeId] : []
+
+  const active = activeId && activeId !== 'ALL' ? devices.find(d => d.id === activeId) ?? null : null
+
   const sendCommand = async (action: string, payload?: string) => {
-    if (selected.length === 0) return
+    if (targets.length === 0) return
     setSending(true)
-    const rows = selected.map(id => ({
-      device_id: id, action, payload: payload ?? null, status: 'pending',
-    }))
-    await supabase.from('commands').insert(rows)
+    await supabase.from('commands').insert(
+      targets.map(id => ({ device_id: id, action, payload: payload ?? null, status: 'pending' }))
+    )
     setSending(false)
   }
 
   const renameDevice = async (d: Device) => {
     const name = prompt('Nombre del teléfono:', d.name)?.trim()
-    if (name && name !== d.name) {
-      await supabase.from('devices').update({ name }).eq('id', d.id)
-      fetchDevices()
-    }
+    if (name && name !== d.name) { await supabase.from('devices').update({ name }).eq('id', d.id); fetchDevices() }
   }
-
-  const saveCoord = async (d: Device, key: string, val: [number, number]) => {
-    const coords = { ...(d.coords ?? {}), [key]: val }
-    await supabase.from('devices').update({ coords }).eq('id', d.id)
-    fetchDevices()
-  }
-
-  const resetCoord = async (d: Device, key: string) => {
-    const coords = { ...(d.coords ?? {}) }
-    delete coords[key]
-    await supabase.from('devices').update({ coords }).eq('id', d.id)
-    fetchDevices()
-  }
-
   const deleteDevice = async (d: Device) => {
     if (!confirm(`¿Eliminar "${d.name}"? Se borrarán también sus logs y comandos.`)) return
-    // Borrar referencias primero (FK), luego el teléfono.
     await supabase.from('logs').delete().eq('device_id', d.id)
     await supabase.from('commands').delete().eq('device_id', d.id)
     await supabase.from('devices').delete().eq('id', d.id)
-    setSelected(s => s.filter(x => x !== d.id))
+    if (activeId === d.id) setActiveId(null)
+    fetchDevices(); fetchLogs()
+  }
+  const saveCoord = async (d: Device, key: string, val: [number, number]) => {
+    await supabase.from('devices').update({ coords: { ...(d.coords ?? {}), [key]: val } }).eq('id', d.id)
     fetchDevices()
-    fetchLogs()
+  }
+  const resetCoord = async (d: Device, key: string) => {
+    const coords = { ...(d.coords ?? {}) }; delete coords[key]
+    await supabase.from('devices').update({ coords }).eq('id', d.id); fetchDevices()
   }
 
-  const toggle = (id: string) =>
-    setSelected(s => s.includes(id) ? s.filter(x => x !== id) : [...s, id])
-  const selectAll    = () => setSelected(devices.map(d => d.id))
-  const selectActive = () => setSelected(devices.filter(d => deviceState(d) === 'online').map(d => d.id))
-  const selectNone   = () => setSelected([])
-
   const ask = (label: string) => { const v = prompt(label); return v?.trim() || null }
-
-  void now // forzar recálculo de estados con el tick
-  const off = sending || selected.length === 0
-  const singleSel = selected.length === 1 ? devices.find(d => d.id === selected[0]) ?? null : null
+  const off = sending || targets.length === 0
   const deviceName = (id: string | null) => devices.find(d => d.id === id)?.name ?? '—'
+
+  // ───────────────────────── LISTA DE TELÉFONOS ─────────────────────────
+  if (!activeId) {
+    const onlineCount = devices.filter(d => deviceState(d) === 'online').length
+    return (
+      <main className="min-h-screen bg-gray-950 text-white p-4 font-mono max-w-lg mx-auto">
+        <h1 className="text-lg font-bold tracking-widest mb-4 text-gray-100">BOTI CONTROL</h1>
+
+        <div className="flex items-center justify-between mb-2">
+          <p className="text-xs text-gray-500 tracking-widest">TELÉFONOS ({devices.length})</p>
+          <p className="text-xs text-gray-600">{onlineCount} activos</p>
+        </div>
+
+        {devices.length > 1 && (
+          <button onClick={() => setActiveId('ALL')}
+            disabled={onlineCount === 0}
+            className="w-full mb-3 px-4 py-3 rounded-xl text-sm font-semibold bg-purple-800 hover:bg-purple-700 disabled:opacity-40 transition active:scale-95">
+            📢 Panel grupal — enviar a {onlineCount} activos
+          </button>
+        )}
+
+        <div className="space-y-2 mb-4">
+          {devices.length === 0 ? (
+            <p className="text-gray-600 text-xs p-2">Sin teléfonos. Instala la app en un teléfono y aparecerá aquí.</p>
+          ) : devices.map(d => {
+            const st = deviceState(d)
+            return (
+              <div key={d.id}
+                onClick={() => setActiveId(d.id)}
+                className="flex items-center gap-3 px-3 py-3 rounded-xl cursor-pointer transition bg-gray-900 border border-gray-800 hover:border-gray-600">
+                <div className={`w-2.5 h-2.5 rounded-full ${STATE_DOT[st]} ${st === 'online' ? 'animate-pulse' : ''}`} />
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-semibold truncate">{d.name}</p>
+                  <p className="text-[10px] text-gray-600">
+                    {d.screen_w && d.screen_h ? `${d.screen_w}×${d.screen_h}` : 'resolución ?'}
+                    {' · '}{Object.keys(d.coords ?? {}).length} calibradas
+                  </p>
+                </div>
+                <span className={`text-[10px] font-bold ${STATE_TEXT[st]}`}>{STATE_LABEL[st]}</span>
+                <button onClick={(e) => { e.stopPropagation(); renameDevice(d) }}
+                  className="text-gray-600 hover:text-gray-300 text-sm px-1">✎</button>
+                <button onClick={(e) => { e.stopPropagation(); deleteDevice(d) }}
+                  className="text-gray-600 hover:text-red-400 text-sm px-1">🗑</button>
+                <span className="text-gray-600">›</span>
+              </div>
+            )
+          })}
+        </div>
+
+        <LogsBox logs={logs} deviceName={deviceName} />
+      </main>
+    )
+  }
+
+  // ───────────────────────── PANEL DE UN TELÉFONO (o grupal) ─────────────────────────
+  const headerTitle = activeId === 'ALL' ? `📢 Grupal (${targets.length} activos)` : active?.name ?? '—'
+  const st = active ? deviceState(active) : 'online'
 
   return (
     <main className="min-h-screen bg-gray-950 text-white p-4 font-mono max-w-lg mx-auto">
+      <button onClick={() => setActiveId(null)} className="text-xs text-gray-400 hover:text-gray-200 mb-3">← Teléfonos</button>
 
-      <h1 className="text-lg font-bold tracking-widest mb-4 text-gray-100">BOTI CONTROL</h1>
-
-      {/* ── Teléfonos ── */}
-      <div className="flex items-center justify-between mb-2">
-        <p className="text-xs text-gray-500 tracking-widest">TELÉFONOS ({devices.length})</p>
-        <div className="flex gap-1">
-          <button onClick={selectActive} className="text-xs px-2 py-1 rounded-lg border border-gray-700 text-gray-400 hover:text-gray-200">Activos</button>
-          <button onClick={selectAll}    className="text-xs px-2 py-1 rounded-lg border border-gray-700 text-gray-400 hover:text-gray-200">Todos</button>
-          <button onClick={selectNone}   className="text-xs px-2 py-1 rounded-lg border border-gray-700 text-gray-400 hover:text-gray-200">Ninguno</button>
+      {/* Cabecera del teléfono */}
+      <div className="bg-gray-900 rounded-xl p-3 mb-4 border border-gray-800 flex items-center gap-3">
+        {active && <div className={`w-2.5 h-2.5 rounded-full ${STATE_DOT[st]} ${st === 'online' ? 'animate-pulse' : ''}`} />}
+        <div className="flex-1 min-w-0">
+          <p className="font-semibold text-sm truncate">{headerTitle}</p>
+          {active && (
+            <p className="text-[10px] text-gray-600">
+              {active.screen_w && active.screen_h ? `${active.screen_w}×${active.screen_h}` : 'resolución ?'}
+            </p>
+          )}
         </div>
-      </div>
-      <div className="bg-gray-900 rounded-xl border border-gray-800 p-2 mb-3 space-y-1">
-        {devices.length === 0 ? (
-          <p className="text-gray-600 text-xs p-2">Sin teléfonos. Instala la app en un teléfono y aparecerá aquí.</p>
-        ) : devices.map(d => {
-          const st = deviceState(d)
-          const sel = selected.includes(d.id)
-          return (
-            <div key={d.id}
-              onClick={() => toggle(d.id)}
-              className={`flex items-center gap-3 px-2 py-2 rounded-lg cursor-pointer transition border ${
-                sel ? 'bg-gray-800 border-gray-600' : 'border-transparent hover:bg-gray-850'}`}>
-              <div className={`w-4 h-4 rounded border flex items-center justify-center text-[10px] ${
-                sel ? 'bg-blue-600 border-blue-500' : 'border-gray-600'}`}>
-                {sel && '✓'}
-              </div>
-              <div className={`w-2 h-2 rounded-full ${STATE_DOT[st]} ${st === 'online' ? 'animate-pulse' : ''}`} />
-              <span className="text-sm font-semibold truncate flex-1">{d.name}</span>
-              <span className={`text-[10px] font-bold ${STATE_TEXT[st]}`}>{STATE_LABEL[st]}</span>
-              <button onClick={(e) => { e.stopPropagation(); renameDevice(d) }}
-                className="text-gray-600 hover:text-gray-300 text-xs px-1">✎</button>
-              <button onClick={(e) => { e.stopPropagation(); deleteDevice(d) }}
-                className="text-gray-600 hover:text-red-400 text-xs px-1">🗑</button>
-            </div>
-          )
-        })}
-      </div>
-
-      {/* Resumen de envío */}
-      <div className={`rounded-xl px-3 py-2 mb-4 text-xs border ${
-        selected.length > 0 ? 'bg-blue-950 border-blue-800 text-blue-300' : 'bg-gray-900 border-gray-800 text-gray-500'}`}>
-        {selected.length === 0
-          ? 'Selecciona uno o más teléfonos para enviar órdenes'
-          : `Enviando a ${selected.length} teléfono${selected.length > 1 ? 's' : ''}: ${selected.map(deviceName).join(', ')}`}
+        {active && <span className={`text-[10px] font-bold ${STATE_TEXT[st]}`}>{STATE_LABEL[st]}</span>}
       </div>
 
       {/* ── TikTok ── */}
       <p className="text-xs text-gray-500 mb-2 tracking-widest">TIKTOK</p>
       <div className="grid grid-cols-2 gap-2 mb-4">
-        <Btn onClick={() => sendCommand('TIKTOK_OPEN')}   disabled={off} color="bg-gray-700 hover:bg-gray-600">
-          Abrir TikTok
-        </Btn>
-        <Btn onClick={() => sendCommand('TIKTOK_LIKE')}   disabled={off} color="bg-pink-700 hover:bg-pink-600">
-          Like ♥
-        </Btn>
+        <Btn onClick={() => sendCommand('TIKTOK_OPEN')} disabled={off} color="bg-gray-700 hover:bg-gray-600">Abrir TikTok</Btn>
+        <Btn onClick={() => sendCommand('TIKTOK_LIKE')} disabled={off} color="bg-pink-700 hover:bg-pink-600">Like ♥</Btn>
         <Btn onClick={() => { const t = ask('Texto del comentario:'); if (t) sendCommand('TIKTOK_COMMENT', t) }}
-          disabled={off} color="bg-cyan-700 hover:bg-cyan-600">
-          Comentar 💬
-        </Btn>
-        <Btn onClick={() => sendCommand('TIKTOK_SAVE')}   disabled={off} color="bg-indigo-700 hover:bg-indigo-600">
-          Guardar 🔖
-        </Btn>
-        <Btn onClick={() => sendCommand('SCROLL')}        disabled={off} color="bg-blue-700 hover:bg-blue-600" span>
-          Scroll ↑
-        </Btn>
+          disabled={off} color="bg-cyan-700 hover:bg-cyan-600">Comentar 💬</Btn>
+        <Btn onClick={() => sendCommand('TIKTOK_SAVE')} disabled={off} color="bg-indigo-700 hover:bg-indigo-600">Guardar 🔖</Btn>
+        <Btn onClick={() => sendCommand('SCROLL')} disabled={off} color="bg-blue-700 hover:bg-blue-600" span>Scroll ↑</Btn>
       </div>
 
-      {/* ── Cuentas TikTok ── */}
-      <div className="flex items-center justify-between mb-2">
-        <p className="text-xs text-gray-500 tracking-widest">CUENTAS</p>
-        <button
-          onClick={() => setFromLive(v => !v)}
-          className={`text-xs px-2 py-1 rounded-lg border transition ${
-            fromLive ? 'bg-rose-700 border-rose-600 text-white' : 'bg-gray-900 border-gray-700 text-gray-400'}`}
-        >
-          {fromLive ? '🔴 Desde live' : '○ Desde live'}
-        </button>
-      </div>
-      <div className="bg-gray-900 rounded-xl border border-gray-800 p-3 mb-4">
-        {singleSel ? (
-          (singleSel.tiktok_accounts ?? []).length > 0 ? (
-            <div className="grid grid-cols-2 gap-2 mb-2">
-              {(singleSel.tiktok_accounts as string[]).map((acc) => (
-                <Btn key={acc} onClick={() => sendCommand(fromLive ? 'TIKTOK_LIVE_SWITCH_ACCOUNT' : 'TIKTOK_SWITCH_ACCOUNT', acc)}
-                  disabled={off} color="bg-yellow-700 hover:bg-yellow-600">
-                  👤 {acc}
-                </Btn>
-              ))}
-            </div>
-          ) : (
-            <p className="text-gray-600 text-xs mb-2">Sin cuentas en {singleSel.name} — toca Sincronizar</p>
-          )
-        ) : (
-          <p className="text-gray-600 text-xs mb-2">Selecciona <b>un solo</b> teléfono para ver y cambiar sus cuentas</p>
-        )}
-        <button
-          onClick={() => sendCommand('TIKTOK_GET_ACCOUNTS')}
-          disabled={off}
-          className="w-full text-xs text-gray-400 hover:text-gray-200 disabled:opacity-40 py-1.5 border border-gray-700 rounded-lg transition"
-        >
-          ↺ Sincronizar cuentas {selected.length > 1 ? `(${selected.length} teléfonos)` : 'del teléfono'}
-        </button>
-      </div>
+      {/* ── Cuentas (solo teléfono individual) ── */}
+      {active && (
+        <>
+          <div className="flex items-center justify-between mb-2">
+            <p className="text-xs text-gray-500 tracking-widest">CUENTAS</p>
+            <button onClick={() => setFromLive(v => !v)}
+              className={`text-xs px-2 py-1 rounded-lg border transition ${
+                fromLive ? 'bg-rose-700 border-rose-600 text-white' : 'bg-gray-900 border-gray-700 text-gray-400'}`}>
+              {fromLive ? '🔴 Desde live' : '○ Desde live'}
+            </button>
+          </div>
+          <div className="bg-gray-900 rounded-xl border border-gray-800 p-3 mb-4">
+            {(active.tiktok_accounts ?? []).length > 0 ? (
+              <div className="grid grid-cols-2 gap-2 mb-2">
+                {(active.tiktok_accounts as string[]).map((acc) => (
+                  <Btn key={acc} onClick={() => sendCommand(fromLive ? 'TIKTOK_LIVE_SWITCH_ACCOUNT' : 'TIKTOK_SWITCH_ACCOUNT', acc)}
+                    disabled={off} color="bg-yellow-700 hover:bg-yellow-600">👤 {acc}</Btn>
+                ))}
+              </div>
+            ) : (
+              <p className="text-gray-600 text-xs mb-2">Sin cuentas — toca Sincronizar</p>
+            )}
+            <button onClick={() => sendCommand('TIKTOK_GET_ACCOUNTS')} disabled={off}
+              className="w-full text-xs text-gray-400 hover:text-gray-200 disabled:opacity-40 py-1.5 border border-gray-700 rounded-lg transition">
+              ↺ Sincronizar cuentas del teléfono
+            </button>
+          </div>
+        </>
+      )}
 
       {/* ── TikTok Live ── */}
       <p className="text-xs text-gray-500 mb-2 tracking-widest">TIKTOK LIVE</p>
       <div className="flex gap-2 mb-2">
-        <input
-          type="text"
-          value={liveLink}
-          onChange={(e) => setLiveLink(e.target.value)}
+        <input type="text" value={liveLink} onChange={(e) => setLiveLink(e.target.value)}
           placeholder="Link del live (https://www.tiktok.com/@user/live)"
-          className="flex-1 bg-gray-900 border border-gray-800 rounded-xl px-3 py-2 text-xs text-gray-200 placeholder-gray-600 focus:outline-none focus:border-gray-600"
-        />
+          className="flex-1 bg-gray-900 border border-gray-800 rounded-xl px-3 py-2 text-xs text-gray-200 placeholder-gray-600 focus:outline-none focus:border-gray-600" />
         <Btn onClick={() => { if (liveLink.trim()) sendCommand('TIKTOK_OPEN_LIVE', liveLink.trim()) }}
-          disabled={off || !liveLink.trim()} color="bg-emerald-700 hover:bg-emerald-600">
-          Abrir Live 📺
-        </Btn>
+          disabled={off || !liveLink.trim()} color="bg-emerald-700 hover:bg-emerald-600">Abrir Live 📺</Btn>
       </div>
       <div className="grid grid-cols-2 gap-2 mb-4">
         <Btn onClick={() => { const t = ask('Comentario para el live:'); if (t) sendCommand('TIKTOK_LIVE_COMMENT', t) }}
-          disabled={off} color="bg-rose-700 hover:bg-rose-600">
-          Chat Live 🔴
-        </Btn>
+          disabled={off} color="bg-rose-700 hover:bg-rose-600">Chat Live 🔴</Btn>
         <Btn onClick={() => { const g = ask('Nombre del regalo (ej: Rosa) — vacío = ver lista:'); sendCommand('TIKTOK_LIVE_GIFT', g ?? undefined) }}
-          disabled={off} color="bg-fuchsia-700 hover:bg-fuchsia-600">
-          Regalo 🎁
-        </Btn>
+          disabled={off} color="bg-fuchsia-700 hover:bg-fuchsia-600">Regalo 🎁</Btn>
       </div>
 
-      {/* ── Debug / Control ── */}
+      {/* ── Control ── */}
       <p className="text-xs text-gray-500 mb-2 tracking-widest">CONTROL</p>
       <div className="grid grid-cols-3 gap-2 mb-4">
-        <Btn onClick={() => sendCommand('DEBUG_NODES')} disabled={off} color="bg-gray-700 hover:bg-gray-600">
-          Nodos 🔍
-        </Btn>
-        <Btn onClick={() => sendCommand('DEBUG_ALL')}   disabled={off} color="bg-gray-700 hover:bg-gray-600">
-          Clicks 🔎
-        </Btn>
-        <Btn onClick={() => sendCommand('STOP')}        disabled={off} color="bg-red-800 hover:bg-red-700">
-          STOP
-        </Btn>
+        <Btn onClick={() => sendCommand('DEBUG_NODES')} disabled={off} color="bg-gray-700 hover:bg-gray-600">Nodos 🔍</Btn>
+        <Btn onClick={() => sendCommand('DEBUG_ALL')} disabled={off} color="bg-gray-700 hover:bg-gray-600">Clicks 🔎</Btn>
+        <Btn onClick={() => sendCommand('STOP')} disabled={off} color="bg-red-800 hover:bg-red-700">STOP</Btn>
       </div>
 
-      {/* ── Calibración (un teléfono) ── */}
-      {singleSel && (
+      {/* ── Calibración LIVE (solo teléfono individual) ── */}
+      {active && (
         <>
-          <div className="flex items-center justify-between mb-2">
-            <p className="text-xs text-gray-500 tracking-widest">CALIBRACIÓN</p>
-            <p className="text-xs text-gray-600">
-              {singleSel.name} · {singleSel.screen_w && singleSel.screen_h
-                ? `${singleSel.screen_w}×${singleSel.screen_h}` : 'resolución ?'}
-            </p>
-          </div>
+          <p className="text-xs text-gray-500 mb-2 tracking-widest">CALIBRACIÓN LIVE</p>
           <div className="bg-gray-900 rounded-xl border border-gray-800 p-3 mb-4 space-y-1.5">
             <p className="text-[11px] text-gray-600 mb-1">
-              Activa &quot;ubicación del puntero&quot; en el teléfono, toca el elemento para ver su x,y y fíjalo aquí.
+              Activa &quot;ubicación del puntero&quot; en el teléfono, toca el elemento del live para ver su x,y y fíjalo aquí.
             </p>
-            <button
-              onClick={() => sendCommand('DEBUG_COORDS')}
-              disabled={off}
+            <button onClick={() => sendCommand('DEBUG_COORDS')} disabled={off}
               className="w-full text-xs text-gray-400 hover:text-gray-200 disabled:opacity-40 py-1 mb-1 border border-gray-700 rounded-lg transition">
               🔎 Ver coords cargadas en el teléfono (logs)
             </button>
             {CALIB.map(c => {
-              const cur = singleSel.coords?.[c.key]
+              const cur = active.coords?.[c.key]
               const [x, y] = cur ?? c.def
               return (
                 <div key={c.key} className="flex items-center gap-2 text-xs">
                   <span className="flex-1 text-gray-300 truncate">{c.label}</span>
-                  <span className={`font-mono ${cur ? 'text-green-400' : 'text-gray-500'}`}>
-                    {x},{y}{cur ? '' : ' (def)'}
-                  </span>
-                  <button
-                    onClick={() => {
+                  <span className={`font-mono ${cur ? 'text-green-400' : 'text-gray-500'}`}>{x},{y}{cur ? '' : ' (def)'}</span>
+                  <button onClick={() => {
                       const v = prompt(`${c.label}\nCoordenada x,y:`, `${x},${y}`)
                       const m = v?.split(',').map(s => parseInt(s.trim(), 10))
-                      if (m && m.length === 2 && m.every(n => !isNaN(n))) saveCoord(singleSel, c.key, [m[0], m[1]])
+                      if (m && m.length === 2 && m.every(n => !isNaN(n))) saveCoord(active, c.key, [m[0], m[1]])
                     }}
-                    className="px-2 py-1 rounded-lg bg-gray-700 hover:bg-gray-600 text-gray-200">
-                    Fijar
-                  </button>
-                  {cur && (
-                    <button onClick={() => resetCoord(singleSel, c.key)}
-                      className="px-1 text-gray-500 hover:text-gray-300" title="Volver al default">↺</button>
-                  )}
+                    className="px-2 py-1 rounded-lg bg-gray-700 hover:bg-gray-600 text-gray-200">Fijar</button>
+                  {cur && <button onClick={() => resetCoord(active, c.key)} className="px-1 text-gray-500 hover:text-gray-300" title="Volver al default">↺</button>}
                 </div>
               )
             })}
@@ -335,27 +292,31 @@ export default function Home() {
         </>
       )}
 
-      {/* Logs */}
-      <div className="bg-gray-900 rounded-xl border border-gray-800 overflow-hidden">
-        <div className="flex items-center justify-between px-3 py-2 border-b border-gray-800">
-          <p className="text-xs text-gray-500 tracking-widest">PASOS EN VIVO</p>
-          <p className="text-xs text-gray-600">{logs.length} entradas</p>
-        </div>
-        <div className="h-72 overflow-y-auto p-3 space-y-1">
-          {logs.length === 0 ? (
-            <p className="text-gray-600 text-xs">Aquí verás cada paso que hacen los teléfonos...</p>
-          ) : (
-            logs.map(log => (
-              <div key={log.id} className={`text-xs ${LOG_COLOR[log.level] ?? 'text-gray-300'}`}>
-                <span className="text-gray-600 mr-2">{new Date(log.created_at).toLocaleTimeString()}</span>
-                <span className="text-blue-400 mr-1">[{deviceName(log.device_id)}]</span>
-                {log.message}
-              </div>
-            ))
-          )}
-        </div>
-      </div>
-
+      <LogsBox logs={logs} deviceName={deviceName} />
     </main>
+  )
+}
+
+function LogsBox({ logs, deviceName }: { logs: Log[]; deviceName: (id: string | null) => string }) {
+  return (
+    <div className="bg-gray-900 rounded-xl border border-gray-800 overflow-hidden">
+      <div className="flex items-center justify-between px-3 py-2 border-b border-gray-800">
+        <p className="text-xs text-gray-500 tracking-widest">PASOS EN VIVO</p>
+        <p className="text-xs text-gray-600">{logs.length} entradas</p>
+      </div>
+      <div className="h-72 overflow-y-auto p-3 space-y-1">
+        {logs.length === 0 ? (
+          <p className="text-gray-600 text-xs">Aquí verás cada paso que hacen los teléfonos...</p>
+        ) : (
+          logs.map(log => (
+            <div key={log.id} className={`text-xs ${LOG_COLOR[log.level] ?? 'text-gray-300'}`}>
+              <span className="text-gray-600 mr-2">{new Date(log.created_at).toLocaleTimeString()}</span>
+              <span className="text-blue-400 mr-1">[{deviceName(log.device_id)}]</span>
+              {log.message}
+            </div>
+          ))
+        )}
+      </div>
+    </div>
   )
 }
