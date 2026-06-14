@@ -55,6 +55,7 @@ export default function Home() {
   const [phrases, setPhrases]   = useState<{ id: string; text: string }[]>([])
   const [newPhrase, setNewPhrase] = useState('')
   const [queue, setQueue]       = useState<Command[]>([])
+  const [statLogs, setStatLogs] = useState<{ device_id: string | null; message: string }[]>([])
   const [, setNow]              = useState(Date.now())
 
   useEffect(() => {
@@ -62,6 +63,7 @@ export default function Home() {
     fetchLogs()
     fetchPhrases()
     fetchQueue()
+    fetchStats()
     const channel = supabase
       .channel('realtime-panel')
       .on('postgres_changes', { event: '*',      schema: 'public', table: 'devices' }, () => fetchDevices())
@@ -71,9 +73,27 @@ export default function Home() {
         setLogs(prev => [p.new as Log, ...prev].slice(0, 80))
       })
       .subscribe()
-    const tick = setInterval(() => setNow(Date.now()), 10_000)
+    const tick = setInterval(() => { setNow(Date.now()); fetchStats() }, 15_000)
     return () => { supabase.removeChannel(channel); clearInterval(tick) }
   }, [])
+
+  const fetchStats = async () => {
+    const start = new Date(); start.setHours(0, 0, 0, 0)
+    const { data } = await supabase.from('logs').select('device_id,message')
+      .gte('created_at', start.toISOString())
+      .or('message.ilike.%comentado ✓%,message.ilike.%publicado ✓%,message.ilike.%enviado ✓ (saldo%')
+      .limit(3000)
+    if (data) setStatLogs(data)
+  }
+  const computeStats = (rows: { message: string }[]) => {
+    let comments = 0, gifts = 0, coins = 0
+    for (const r of rows) {
+      if (r.message.includes('comentado ✓') || r.message.includes('publicado ✓')) comments++
+      const g = r.message.match(/enviado ✓ \(saldo (\d+)→(\d+)\)/)
+      if (g) { gifts++; coins += Math.max(0, parseInt(g[1], 10) - parseInt(g[2], 10)) }
+    }
+    return { comments, gifts, coins }
+  }
 
   const fetchPhrases = async () => {
     const { data } = await supabase.from('phrases').select('id,text').order('created_at', { ascending: true })
@@ -201,6 +221,9 @@ export default function Home() {
       <main className="min-h-screen bg-gray-950 text-white p-4 font-mono max-w-lg mx-auto">
         <h1 className="text-lg font-bold tracking-widest mb-4 text-gray-100">BOTI CONTROL</h1>
 
+        <p className="text-xs text-gray-500 mb-2 tracking-widest">HOY (todos)</p>
+        <StatsBox s={computeStats(statLogs)} />
+
         <div className="flex items-center justify-between mb-2">
           <p className="text-xs text-gray-500 tracking-widest">TELÉFONOS ({devices.length})</p>
           <p className="text-xs text-gray-600">{onlineCount} activos</p>
@@ -296,6 +319,10 @@ export default function Home() {
         </div>
         {active && <span className={`text-[10px] font-bold ${STATE_TEXT[st]}`}>{STATE_LABEL[st]}</span>}
       </div>
+
+      {/* Estadísticas de hoy (del/los teléfono(s) del panel) */}
+      <p className="text-xs text-gray-500 mb-2 tracking-widest">HOY</p>
+      <StatsBox s={computeStats(statLogs.filter(l => targets.includes(l.device_id ?? '')))} />
 
       {/* Cola de comandos */}
       {(() => {
@@ -476,6 +503,25 @@ export default function Home() {
 
       <LogsBox logs={logs} deviceName={deviceName} />
     </main>
+  )
+}
+
+function StatsBox({ s }: { s: { comments: number; gifts: number; coins: number } }) {
+  return (
+    <div className="grid grid-cols-3 gap-2 mb-4">
+      <div className="bg-gray-900 rounded-xl border border-gray-800 p-3 text-center">
+        <p className="text-lg font-bold text-cyan-400">{s.comments}</p>
+        <p className="text-[10px] text-gray-500">comentarios</p>
+      </div>
+      <div className="bg-gray-900 rounded-xl border border-gray-800 p-3 text-center">
+        <p className="text-lg font-bold text-fuchsia-400">{s.gifts}</p>
+        <p className="text-[10px] text-gray-500">regalos</p>
+      </div>
+      <div className="bg-gray-900 rounded-xl border border-gray-800 p-3 text-center">
+        <p className="text-lg font-bold text-yellow-400">{s.coins}</p>
+        <p className="text-[10px] text-gray-500">monedas</p>
+      </div>
+    </div>
   )
 }
 
