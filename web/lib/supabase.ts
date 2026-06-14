@@ -18,6 +18,7 @@ export interface Device {
   coords: Record<string, [number, number]> | null
   screen_w: number | null
   screen_h: number | null
+  current_account: string | null
 }
 
 export interface Command {

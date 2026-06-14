@@ -151,9 +151,9 @@ export default function Home() {
                 <div className={`w-2.5 h-2.5 rounded-full ${STATE_DOT[st]} ${st === 'online' ? 'animate-pulse' : ''}`} />
                 <div className="flex-1 min-w-0">
                   <p className="text-sm font-semibold truncate">{d.name}</p>
-                  <p className="text-[10px] text-gray-600">
-                    {d.screen_w && d.screen_h ? `${d.screen_w}×${d.screen_h}` : 'resolución ?'}
-                    {' · '}{Object.keys(d.coords ?? {}).length} calibradas
+                  <p className="text-[10px] text-gray-600 truncate">
+                    {d.current_account ? `👤 ${d.current_account}` : 'cuenta ?'}
+                    {' · '}{d.screen_w && d.screen_h ? `${d.screen_w}×${d.screen_h}` : 'res ?'}
                   </p>
                 </div>
                 <span className={`text-[10px] font-bold ${STATE_TEXT[st]}`}>{STATE_LABEL[st]}</span>
@@ -186,7 +186,8 @@ export default function Home() {
         <div className="flex-1 min-w-0">
           <p className="font-semibold text-sm truncate">{headerTitle}</p>
           {active && (
-            <p className="text-[10px] text-gray-600">
+            <p className="text-[10px] text-gray-600 truncate">
+              {active.current_account ? `👤 ${active.current_account} · ` : ''}
               {active.screen_w && active.screen_h ? `${active.screen_w}×${active.screen_h}` : 'resolución ?'}
             </p>
           )}
@@ -219,10 +220,15 @@ export default function Home() {
           <div className="bg-gray-900 rounded-xl border border-gray-800 p-3 mb-4">
             {(active.tiktok_accounts ?? []).length > 0 ? (
               <div className="grid grid-cols-2 gap-2 mb-2">
-                {(active.tiktok_accounts as string[]).map((acc) => (
-                  <Btn key={acc} onClick={() => sendCommand(fromLive ? 'TIKTOK_LIVE_SWITCH_ACCOUNT' : 'TIKTOK_SWITCH_ACCOUNT', acc)}
-                    disabled={off} color="bg-yellow-700 hover:bg-yellow-600">👤 {acc}</Btn>
-                ))}
+                {(active.tiktok_accounts as string[]).map((acc) => {
+                  const isCurrent = active.current_account === acc
+                  return (
+                    <Btn key={acc} onClick={() => sendCommand(fromLive ? 'TIKTOK_LIVE_SWITCH_ACCOUNT' : 'TIKTOK_SWITCH_ACCOUNT', acc)}
+                      disabled={off} color={isCurrent ? 'bg-green-700 hover:bg-green-600 ring-2 ring-green-400' : 'bg-yellow-700 hover:bg-yellow-600'}>
+                      {isCurrent ? '✓ ' : '👤 '}{acc}
+                    </Btn>
+                  )
+                })}
               </div>
             ) : (
               <p className="text-gray-600 text-xs mb-2">Sin cuentas — toca Sincronizar</p>

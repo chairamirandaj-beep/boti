@@ -766,7 +766,8 @@ object CommandExecutor {
 
         if (!found) { log(deviceId, "warn", "Cuenta '$accountName' no encontrada"); return }
         delay(4000)
-        log(deviceId, "info", "Cambio a '$accountName' completado ✓")
+        runCatching { SupabaseClient.setCurrentAccount(deviceId, accountName) }
+        log(deviceId, "info", "Cambio a '$accountName' completado ✓ (cuenta actual: $accountName)")
     }
 
     private suspend fun tiktokGetAccounts() {
