@@ -512,7 +512,7 @@ object CommandExecutor {
         // Buscar el nodo favoritos con bounds DENTRO de la pantalla
         // TikTok tiene múltiples videos en el árbol — filtramos por coordenadas válidas
         val node = findNodeOnScreen(root, "favoritos", screenH)
-        root.recycle()
+        // no reciclar root: usamos `node` (hijo) después → crash en Android 9
 
         if (node != null) {
             val rect = Rect()
@@ -538,7 +538,7 @@ object CommandExecutor {
 
         // Buscar "Seguir a" con bounds dentro de pantalla (el video actual)
         val node = findNodeOnScreen(root, "seguir a", screenH)
-        root.recycle()
+        // no reciclar root: usamos `node` (hijo) después → crash en Android 9
 
         if (node != null) {
             val clicked = node.performAction(AccessibilityNodeInfo.ACTION_CLICK)
@@ -577,20 +577,17 @@ object CommandExecutor {
         // 2. Buscar campo de texto (sin activar teclado primero)
         log(deviceId, "info", "Comentar: buscando campo de texto...")
         var inputNode: AccessibilityNodeInfo? = service.rootInActiveWindow?.let { root ->
-            val n = findNode(root, "agregar un comentario")
+            // No reciclar root: devolvemos un hijo y usarlo tras reciclar crashea en Android 9.
+            findNode(root, "agregar un comentario")
                 ?: findNode(root, "añadir un comentario")
                 ?: findEditText(root)
-            root.recycle()
-            n
         }
         // Si no encontrado, activar tocando la barra al fondo
         if (inputNode == null) {
             log(deviceId, "info", "Comentar: tocando barra de comentario...")
             tapAt(m.widthPixels * 0.40f, m.heightPixels * 0.95f)
             delay(1800)
-            inputNode = service.rootInActiveWindow?.let { root ->
-                val n = findEditText(root); root.recycle(); n
-            }
+            inputNode = service.rootInActiveWindow?.let { root -> findEditText(root) }
         }
         if (inputNode == null) {
             log(deviceId, "warn", "Comentar: campo de texto no encontrado")
@@ -636,7 +633,7 @@ object CommandExecutor {
         for (window in windows) {
             val root = window.root ?: continue
             val node = findNode(root, desc.lowercase())
-            if (node != null) { root.recycle(); return node }
+            if (node != null) return node   // no reciclar root: el nodo devuelto es hijo suyo (crash en Android 9)
             root.recycle()
         }
         return null
@@ -650,7 +647,7 @@ object CommandExecutor {
         for (window in windows) {
             val root = window.root ?: continue
             val node = findClickableNodeInRegion(root, yMin, yMax, xMin)
-            if (node != null) { root.recycle(); return node }
+            if (node != null) return node   // no reciclar root: el nodo devuelto es hijo suyo (crash en Android 9)
             root.recycle()
         }
         return null
@@ -930,19 +927,19 @@ object CommandExecutor {
 
         // 1. Activar/buscar el campo del chat
         var inputNode: AccessibilityNodeInfo? = service.rootInActiveWindow?.let { root ->
-            val n = findNode(root, "deja un comentario")
+            // OJO: no reciclar root aquí — devolvemos un nodo hijo y usarlo tras reciclar
+            // el root crashea el servicio en Android 9 (Huawei). recycle() es no-op en
+            // Android moderno, así que omitirlo es seguro en todos.
+            findNode(root, "deja un comentario")
                 ?: findNode(root, "añadir comentario")
                 ?: findEditText(root)
-            root.recycle(); n
         }
         if (inputNode == null) {
             val (cbx, cby) = CoordProfile.get("live_chat", 200f, 2235f)
             log(deviceId, "info", "Live comentar: abriendo chat ($cbx,$cby)...")
             tapAt(cbx, cby)
             humanDelay(1400, 2200)
-            inputNode = service.rootInActiveWindow?.let { root ->
-                val n = findEditText(root); root.recycle(); n
-            }
+            inputNode = service.rootInActiveWindow?.let { root -> findEditText(root) }
         }
         if (inputNode == null) {
             log(deviceId, "warn", "Live comentar: campo no encontrado (¿estás en un live?)")
