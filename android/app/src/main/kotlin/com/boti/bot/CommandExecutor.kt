@@ -142,6 +142,22 @@ object CommandExecutor {
         return true
     }
 
+    // Texto actual del campo de comentario del live (vacío si no hay/no se encuentra).
+    private fun liveInputText(): String {
+        val service = BotService.instance ?: return ""
+        val root = service.rootInActiveWindow ?: return ""
+        val n = findEditText(root)
+        val t = n?.text?.toString() ?: ""
+        if (n != null && n !== root) n.recycle()
+        root.recycle()
+        return t
+    }
+
+    // ¿TikTok mostró aviso de "comentas muy rápido / con frecuencia"?
+    private fun rateLimited(): Boolean =
+        screenHas("rápido") || screenHas("despacio") || screenHas("frecuencia") ||
+        screenHas("slow down") || screenHas("too fast") || screenHas("too frequently")
+
     // Lee el saldo de Monedas del panel de regalos. El nodo de saldo tiene
     // desc "Tienes N Monedas. Pulsa dos veces para recargar..." y text="N".
     private fun readCoins(): Int? {
@@ -906,76 +922,94 @@ object CommandExecutor {
         val deviceId = DeviceId.get() ?: return
         val service  = BotService.instance ?: return
 
-        // 1. Buscar input del chat — solo por placeholder exacto o EditText
-        log(deviceId, "info", "Live comentar: buscando input...")
+        // GUARDIA anti rate-limit ANTES de empezar: si TikTok ya pide esperar, no insistir.
+        if (rateLimited()) {
+            log(deviceId, "warn", "Live comentar: TikTok pide esperar (rate-limit) — me salto este")
+            return
+        }
+
+        // 1. Activar/buscar el campo del chat
         var inputNode: AccessibilityNodeInfo? = service.rootInActiveWindow?.let { root ->
             val n = findNode(root, "deja un comentario")
                 ?: findNode(root, "añadir comentario")
                 ?: findEditText(root)
-            root.recycle()
-            n
+            root.recycle(); n
         }
-        // Si no encontrado, tocar la barra del chat
-        // DEBUG_ALL confirmó: barra en [28,2174][640,2296], centro x=200, y=2235
         if (inputNode == null) {
             val (cbx, cby) = CoordProfile.get("live_chat", 200f, 2235f)
-            log(deviceId, "info", "Live comentar: tocando barra de chat ($cbx,$cby)...")
+            log(deviceId, "info", "Live comentar: abriendo chat ($cbx,$cby)...")
             tapAt(cbx, cby)
-            delay(1800)
+            humanDelay(1400, 2200)
             inputNode = service.rootInActiveWindow?.let { root ->
                 val n = findEditText(root); root.recycle(); n
             }
         }
         if (inputNode == null) {
-            log(deviceId, "warn", "Live comentar: campo no encontrado")
+            log(deviceId, "warn", "Live comentar: campo no encontrado (¿estás en un live?)")
             return
         }
 
-        // 2. Pegar texto
-        log(deviceId, "info", "Live comentar: pegando texto...")
+        // 2. Limpiar el campo (por si quedó texto de un intento previo) y pegar
         inputNode.performAction(AccessibilityNodeInfo.ACTION_FOCUS)
-        delay(200)
+        humanDelay(150, 350)
+        val emptyB = Bundle().apply { putCharSequence(ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, "") }
+        inputNode.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, emptyB)
+        humanDelay(150, 300)
+
         val clipboard = service.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
         clipboard.setPrimaryClip(ClipData.newPlainText("boti_live", text))
-        delay(200)
+        humanDelay(150, 300)
         val pasted = inputNode.performAction(AccessibilityNodeInfo.ACTION_PASTE)
         if (!pasted) {
-            val bundle = Bundle().apply { putCharSequence(ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, text) }
-            val typed = inputNode.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, bundle)
-            if (!typed) { inputNode.recycle(); log(deviceId, "warn", "Live comentar: no pudo escribir"); return }
+            val b = Bundle().apply { putCharSequence(ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, text) }
+            if (!inputNode.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, b)) {
+                inputNode.recycle(); log(deviceId, "warn", "Live comentar: no pudo escribir el texto"); return
+            }
         }
         inputNode.recycle()
-        delay(1000)
+        humanDelay(700, 1200)
 
-        // 3. Enviar — método 1: IME_ENTER (tecla enviar del teclado), sin coordenada.
-        log(deviceId, "info", "Live comentar: enviando...")
+        // 3. Enviar con varios métodos, VERIFICANDO que el campo se vacíe (= enviado de verdad)
+        val key = text.take(12)   // basta una parte para verificar
         var sent = false
-        val edit = service.rootInActiveWindow?.let { root ->
-            val n = findEditText(root); root.recycle(); n
+
+        suspend fun verify(method: String): Boolean {
+            humanDelay(700, 1100)
+            if (rateLimited()) {
+                log(deviceId, "warn", "Live comentar: rate-limit tras $method — no insisto")
+                return false
+            }
+            val ok = !liveInputText().contains(key)
+            if (ok) log(deviceId, "info", "Live comentar: enviado ✓ ($method)")
+            return ok
         }
-        if (edit != null) {
-            sent = edit.performAction(AccessibilityNodeInfo.AccessibilityAction.ACTION_IME_ENTER.id)
-            edit.recycle()
-            if (sent) log(deviceId, "info", "Live comentar: enviado con teclado (IME)")
+
+        // Método 1: IME_ENTER (tecla enviar del teclado), sin coordenada
+        service.rootInActiveWindow?.let { root ->
+            val n = findEditText(root)
+            n?.performAction(AccessibilityNodeInfo.AccessibilityAction.ACTION_IME_ENTER.id)
+            if (n != null && n !== root) n.recycle()
+            root.recycle()
         }
+        sent = verify("IME")
 
         // Método 2: botón Enviar/Send por accesibilidad
-        if (!sent) {
-            sent = findAndClickInAllWindows("enviar") || findAndClickInAllWindows("send")
-            if (sent) log(deviceId, "info", "Live comentar: enviado (botón)")
+        if (!sent && !rateLimited()) {
+            if (findAndClickInAllWindows("enviar") || findAndClickInAllWindows("send")) sent = verify("botón")
         }
 
         // Método 3: coordenada calibrable (último recurso)
-        if (!sent) {
+        if (!sent && !rateLimited()) {
             val keyboardOpen = service.windows?.any { it.type == 2 } ?: false
             val (sx, sy) = if (keyboardOpen) CoordProfile.get("live_send_kb", 1000f, 1505f)
                            else CoordProfile.get("live_send", 598f, 2235f)
-            log(deviceId, "info", "Live comentar: enviando por coord ($sx,$sy) teclado=$keyboardOpen")
+            log(deviceId, "info", "Live comentar: probando coord ($sx,$sy)")
             tapAt(sx, sy)
+            sent = verify("coord")
         }
-        delay(600)
-        // No salir del live — el usuario sigue viendo el stream
-        log(deviceId, "info", "Live comentado ✓: \"$text\"")
+
+        if (sent) log(deviceId, "info", "Live comentado ✓: \"$text\"")
+        else log(deviceId, "warn", "Live comentar: NO confirmado (el campo no se vació) — \"$text\"")
     }
 
     // Enviar regalo en Live.
@@ -1180,11 +1214,17 @@ object CommandExecutor {
         if (action.isEmpty()) { log(deviceId, "warn", "Loop: sin acción"); return }
         log(deviceId, "info", "⏱️ Loop: $action x$count cada ${interval}s")
 
+        var last: String? = null
         for (i in 1..count) {
             if (CommandListener.stopCurrent) { log(deviceId, "warn", "Loop detenido en $i/$count"); return }
             log(deviceId, "info", "⏱️ $i/$count")
 
-            val p = if (action.contains("COMMENT") && comments.isNotEmpty()) comments.random() else inner
+            // Comentario: elige frase al azar SIN repetir la anterior (anti-detección)
+            val p = if (action.contains("COMMENT") && comments.isNotEmpty()) {
+                var c = comments.random()
+                if (comments.size > 1) { var guard = 0; while (c == last && guard++ < 5) c = comments.random() }
+                last = c; c
+            } else inner
             execute(action, p)
 
             if (i < count) {
