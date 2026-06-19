@@ -30,7 +30,9 @@ class BotService : AccessibilityService() {
         scope.launch {
             runCatching {
                 val id = DeviceId.get()!!
-                SupabaseClient.updateDeviceStatus(id, "online")
+                // Upsert (no solo PATCH): garantiza que la fila exista aunque el registro
+                // inicial en MainActivity haya fallado (p.ej. sin red al abrir la app).
+                SupabaseClient.registerDevice(id, android.os.Build.MODEL)
                 val m = resources.displayMetrics
                 SupabaseClient.reportResolution(id, m.widthPixels, m.heightPixels)
                 CoordProfile.refresh()

@@ -137,7 +137,10 @@ export default function Home() {
     if (data) setQueue(data as Command[])
   }
   const cancelQueue = async (ids: string[]) => {
-    await supabase.from('commands').update({ status: 'cancelled' }).in('device_id', ids).eq('status', 'pending')
+    // Cancela pendientes Y los atascados en "executing" (p.ej. si el servicio del
+    // teléfono se murió a mitad del comando y nunca los marcó como done).
+    await supabase.from('commands').update({ status: 'cancelled' })
+      .in('device_id', ids).in('status', ['pending', 'executing'])
     fetchQueue()
   }
 
