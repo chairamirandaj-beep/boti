@@ -981,14 +981,18 @@ object CommandExecutor {
             return ok
         }
 
-        // Método 1: IME_ENTER (tecla enviar del teclado), sin coordenada
-        service.rootInActiveWindow?.let { root ->
-            val n = findEditText(root)
-            n?.performAction(AccessibilityNodeInfo.AccessibilityAction.ACTION_IME_ENTER.id)
-            if (n != null && n !== root) n.recycle()
-            root.recycle()
+        // Método 1: IME_ENTER (tecla enviar del teclado), sin coordenada.
+        // ACTION_IME_ENTER existe desde Android 11 (API 30). En Android 9/10 referenciarla
+        // lanza NoSuchFieldError y MATA el proceso → solo usarla en API >= 30.
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.R) {
+            service.rootInActiveWindow?.let { root ->
+                val n = findEditText(root)
+                n?.performAction(AccessibilityNodeInfo.AccessibilityAction.ACTION_IME_ENTER.id)
+                if (n != null && n !== root) n.recycle()
+                root.recycle()
+            }
+            sent = verify("IME")
         }
-        sent = verify("IME")
 
         // Método 2: botón Enviar/Send por accesibilidad
         if (!sent && !rateLimited()) {

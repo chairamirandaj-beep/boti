@@ -39,7 +39,9 @@ class KeepAliveService : Service() {
         super.onCreate()
         createChannel()
         val notif = buildNotification()
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q)
+        // FOREGROUND_SERVICE_TYPE_SPECIAL_USE es API 34: referenciarla en versiones
+        // anteriores lanza NoSuchFieldError. Solo pasar el tipo en API >= 34.
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE)
             startForeground(NOTIF_ID, notif, ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE)
         else
             startForeground(NOTIF_ID, notif)
