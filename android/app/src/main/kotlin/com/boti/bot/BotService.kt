@@ -21,6 +21,10 @@ class BotService : AccessibilityService() {
         instance = this
         DeviceId.init(applicationContext)
 
+        // Captura crashes (que matan el proceso) y sube el del arranque anterior.
+        CrashLogger.install(applicationContext)
+        scope.launch { runCatching { CrashLogger.flush(applicationContext) } }
+
         // Notificación persistente: sube la prioridad del proceso para que EMUI/Huawei
         // (y otros) no maten la app tras un comando y desactiven la accesibilidad.
         runCatching { KeepAliveService.start(applicationContext) }
