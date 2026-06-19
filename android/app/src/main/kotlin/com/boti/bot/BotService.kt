@@ -21,6 +21,10 @@ class BotService : AccessibilityService() {
         instance = this
         DeviceId.init(applicationContext)
 
+        // Notificación persistente: sube la prioridad del proceso para que EMUI/Huawei
+        // (y otros) no maten la app tras un comando y desactiven la accesibilidad.
+        runCatching { KeepAliveService.start(applicationContext) }
+
         // WakeLock parcial: mantiene CPU activa, evita que Samsung congele el proceso
         val pm = getSystemService(Context.POWER_SERVICE) as PowerManager
         wakeLock = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "boti:BotServiceLock").also {
@@ -62,6 +66,7 @@ class BotService : AccessibilityService() {
     override fun onDestroy() {
         super.onDestroy()
         CommandListener.stop()
+        runCatching { KeepAliveService.stop(applicationContext) }
         wakeLock?.release()
         scope.launch {
             runCatching { SupabaseClient.updateDeviceStatus(DeviceId.get()!!, "offline") }
